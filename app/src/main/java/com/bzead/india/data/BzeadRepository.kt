@@ -1439,6 +1439,7 @@ object BzeadRepository {
         _userPhone.value = profile?.optStringOrNull("phone") ?: meta.optStringOrNull("phone")
         _isLoggedIn.value = true
         loadUserData(s.userId)
+        registerPushToken()
         return Pair(true, null)
     }
 
@@ -1549,9 +1550,19 @@ object BzeadRepository {
         )
     }
 
+    /** Registers this device's FCM token for the signed-in user (web `register-push-token`). */
+    fun registerPushToken() {
+        val ctx = appContext ?: return
+        authScope.launch {
+            val token = validToken() ?: return@launch
+            PushTokenManager.register(ctx, token)
+        }
+    }
+
     suspend fun logout() {
         val token = session?.accessToken
         if (token != null) {
+            appContext?.let { PushTokenManager.unregister(it, token) }
             val res = SupabaseAuth.signOut(token)
             if (!res.ok) SupabaseAuth.signOut(token, "local")
         }

@@ -180,6 +180,13 @@ class MainActivity : ComponentActivity(), com.razorpay.PaymentResultWithDataList
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         com.bzead.india.data.BzeadRepository.init(applicationContext)
+        com.bzead.india.data.BzeadFirebaseMessagingService.ensureChannel(applicationContext)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { }
+                .launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
         enableEdgeToEdge()
         setContent {
             MyApplicationTheme {
