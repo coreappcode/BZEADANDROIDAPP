@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -40,6 +41,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.SnackbarHostState
@@ -68,7 +70,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.bzead.india.data.BzeadRepository
-import com.bzead.india.data.SampleCatalogData
 import com.bzead.india.model.ProductVariant
 import com.bzead.india.theme.BzeadAccent
 import com.bzead.india.theme.BzeadPrimary
@@ -93,6 +94,9 @@ fun ProductDetailScreen(
     val catalog by BzeadRepository.allProducts.collectAsState()
     val product = remember(productId, catalog) { catalog.firstOrNull { it.id == productId } }
     androidx.compose.runtime.LaunchedEffect(productId) { BzeadRepository.loadProductDetail(productId) }
+    androidx.compose.runtime.LaunchedEffect(productId) { BzeadRepository.loadReviews(productId) }
+    val reviewsByProduct by BzeadRepository.reviews.collectAsState()
+    val productReviews = reviewsByProduct[productId].orEmpty()
     val wishlistIds by BzeadRepository.wishlistProductIds.collectAsState()
     val scope = rememberCoroutineScope()
 
@@ -531,72 +535,129 @@ fun ProductDetailScreen(
                     shadowElevation = 1.dp
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Customer Reviews",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = TextPrimary
-                            )
-                            TextButton(onClick = { onNavigateToWriteReview(productId) }) {
-                                Text("Write a Review", fontWeight = FontWeight.Bold, color = BzeadPrimary)
+                        Text(
+                            text = "Customer reviews",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        val averageRating = if (product.rating > 0f) product.rating.toDouble()
+                        else if (productReviews.isNotEmpty()) Math.round(productReviews.sumOf { it.rating.toDouble() } / productReviews.size * 10) / 10.0
+                        else 0.0
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            repeat(5) { starIndex ->
+                                Icon(
+                                    imageVector = Icons.Filled.Star,
+                                    contentDescription = null,
+                                    tint = if (starIndex < Math.round(averageRating)) StarGold else Color(0xFFD1D5DB),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(String.format("%.1f out of 5", averageRating), fontSize = 15.sp, color = TextPrimary)
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("${productReviews.size} global ratings", fontSize = 13.sp, color = TextSecondary)
+                        Spacer(modifier = Modifier.height(12.dp))
+                        listOf(5, 4, 3, 2, 1).forEach { starValue ->
+                            val count = productReviews.count { it.rating == starValue }
+                            val pct = if (productReviews.isNotEmpty()) Math.round(count * 100.0 / productReviews.size).toInt() else 0
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("$starValue star", fontSize = 13.sp, color = BzeadPrimary, modifier = Modifier.width(54.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(18.dp)
+                                        .background(Color.White)
+                                        .border(1.dp, Color(0xFFD1D5DB))
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth(pct / 100f)
+                                            .fillMaxHeight()
+                                            .background(Color(0xFFFF6A00))
+                                    )
+                                }
+                                Text("$pct%", fontSize = 13.sp, color = BzeadPrimary, modifier = Modifier.width(40.dp), textAlign = androidx.compose.ui.text.style.TextAlign.End)
                             }
                         }
                         Spacer(modifier = Modifier.height(12.dp))
+                        Divider(color = Color(0xFFE5E7EB))
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text("Review this product", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                        Text("Share your thoughts with other customers", fontSize = 13.sp, color = TextSecondary)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = { onNavigateToWriteReview(productId) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Write a product review", color = TextPrimary)
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
 
-                        SampleCatalogData.sampleReviews.forEach { review ->
-                            Column(modifier = Modifier.fillMaxWidth()) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
+                        if (productReviews.isEmpty()) {
+                            Text("No reviews yet. Be the first to review.", fontSize = 14.sp, color = TextSecondary)
+                        } else {
+                            productReviews.take(4).forEach { review ->
+                                Column(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(
-                                            text = review.author,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 13.sp,
-                                            color = TextPrimary
-                                        )
-                                        if (review.verifiedBuyer) {
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text(
-                                                text = "Verified Buyer",
-                                                fontSize = 10.sp,
-                                                color = BzeadSuccess,
-                                                fontWeight = FontWeight.Bold
+                                        Box(
+                                            modifier = Modifier
+                                                .size(28.dp)
+                                                .clip(CircleShape)
+                                                .background(Color(0xFFF3F4F6))
+                                                .border(1.dp, Color(0xFFD1D5DB), CircleShape),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(review.author.take(1).uppercase(), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                                        }
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(review.author, fontSize = 13.sp, color = TextPrimary)
+                                    }
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        repeat(5) { starIndex ->
+                                            Icon(
+                                                imageVector = Icons.Filled.Star,
+                                                contentDescription = null,
+                                                tint = if (starIndex < review.rating) StarGold else Color(0xFFD1D5DB),
+                                                modifier = Modifier.size(14.dp)
                                             )
                                         }
-                                    }
-                                    Text(
-                                        text = review.date,
-                                        fontSize = 11.sp,
-                                        color = TextSecondary
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Row {
-                                    repeat(5) { starIndex ->
-                                        Icon(
-                                            imageVector = Icons.Filled.Star,
-                                            contentDescription = null,
-                                            tint = if (starIndex < review.rating) StarGold else Color(0xFFE2E8F0),
-                                            modifier = Modifier.size(14.dp)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = review.heading.ifBlank { "Verified Purchase" },
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = TextPrimary,
+                                            maxLines = 1
                                         )
                                     }
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text("Reviewed on ${review.date}", fontSize = 12.sp, color = TextSecondary)
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(review.comment, fontSize = 14.sp, color = TextPrimary, lineHeight = 20.sp)
+                                    review.images.firstOrNull()?.let { img ->
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        AsyncImage(
+                                            model = img,
+                                            contentDescription = "Review",
+                                            modifier = Modifier
+                                                .size(80.dp)
+                                                .border(1.dp, Color(0xFFD1D5DB), RoundedCornerShape(2.dp)),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text("0 people found this helpful", fontSize = 12.sp, color = TextSecondary)
                                 }
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = review.comment,
-                                    fontSize = 12.sp,
-                                    color = TextSecondary,
-                                    lineHeight = 18.sp
-                                )
-                                Spacer(modifier = Modifier.height(12.dp))
+                            }
+                            if (productReviews.size > 4) {
+                                Text("See more reviews", fontSize = 13.sp, color = BzeadPrimary)
                             }
                         }
                     }

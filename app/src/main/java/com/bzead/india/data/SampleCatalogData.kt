@@ -1,7 +1,6 @@
 package com.bzead.india.data
 
 import com.bzead.india.model.ProductVariant
-import com.bzead.india.model.Review
 
 object SampleCatalogData {
 
@@ -187,11 +186,6 @@ object SampleCatalogData {
     )
 
 
-    val sampleReviews = listOf(
-        Review("Amit K.", 5, "Outstanding sound quality and deep bass! Delivered to Delhi in 2 days.", "2 days ago", true),
-        Review("Priya S.", 5, "Authentic product at great price. Packaging was super secure.", "5 days ago", true),
-        Review("Vikram R.", 4, "Value for money product. Battery life easily lasts full day.", "1 week ago", true)
-    )
 
     val products = listOf(
         Product(

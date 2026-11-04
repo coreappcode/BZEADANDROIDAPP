@@ -7,6 +7,7 @@ import com.bzead.india.model.NotificationItem
 import com.bzead.india.model.Order
 import com.bzead.india.model.OrderItem
 import com.bzead.india.model.OrderStatus
+import com.bzead.india.model.Review
 import com.bzead.india.model.ProductVariant
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -187,6 +188,13 @@ object BzeadRepository {
     /** Loads the product row with variants; used by the product page. */
     suspend fun loadProductDetail(id: String) {
         SupabaseClient.fetchProductDetail(id)?.let { mergeIntoCatalog(listOf(it)) }
+    }
+
+    /** Resolves a product id, public product id or slug (as accepted by the web `/products/:productId`) to the product id. */
+    suspend fun resolveProductRef(ref: String): String? {
+        val product = SupabaseClient.fetchProductDetail(ref) ?: return null
+        mergeIntoCatalog(listOf(product))
+        return product.id
     }
 
     /** Web `search_products_catalog` search. Null means the request failed. */
@@ -428,8 +436,42 @@ object BzeadRepository {
         }
     }
 
-    suspend fun submitReview(productId: String, rating: Int, title: String, comment: String): Boolean {
-        return true
+    private val _reviews = MutableStateFlow<Map<String, List<Review>>>(emptyMap())
+    val reviews: StateFlow<Map<String, List<Review>>> = _reviews.asStateFlow()
+
+    /** Web `fetchProductReviews`. Public read, uses the user token when signed in. */
+    suspend fun loadReviews(productId: String) {
+        val token = validToken() ?: SupabaseClient.ANON_KEY
+        val list = ReviewApi.fetchReviews(productId, token) ?: return
+        _reviews.value = _reviews.value + (productId to list)
+    }
+
+    /** Web `WriteReview.handleSubmitReview`. Returns the error text, or null on success. */
+    suspend fun submitReview(
+        productId: String,
+        rating: Int,
+        title: String,
+        comment: String,
+        images: List<ReviewApi.UploadImage>,
+        benefits: List<String>
+    ): String? {
+        if (rating <= 0 || title.isBlank() || comment.isBlank()) {
+            return "Please fill all required fields: Rating, Title, and Review"
+        }
+        val uid = session?.userId
+        val token = validToken()
+        if (uid == null || token == null) return "You must be logged in to submit a review."
+        return try {
+            val already = ReviewApi.hasReviewed(token, uid, productId)
+            if (already == true) return "You have already reviewed this product."
+            val urls = if (images.isEmpty()) emptyList() else ReviewApi.uploadImages(token, productId, images)
+            val err = ReviewApi.createReview(token, uid, productId, rating, title.trim(), comment.trim(), urls, benefits)
+            if (err != null) return "Failed to submit review. Please try again."
+            loadReviews(productId)
+            null
+        } catch (e: Exception) {
+            "Failed to submit review. Please try again."
+        }
     }
 
     suspend fun updateUserProfile(fullName: String, phone: String): Boolean {

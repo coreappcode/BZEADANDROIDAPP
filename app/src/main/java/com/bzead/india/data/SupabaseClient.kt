@@ -207,7 +207,17 @@ object SupabaseClient {
 
     /** Product detail row with variants (web product page: `products` + `product_variants`). */
     suspend fun fetchProductDetail(id: String): Product? = withContext(Dispatchers.IO) {
-        val r = SupabaseRest.request("GET", "products?select=*,product_variants(*)&id=eq.${SupabaseRest.enc(id)}", ANON_KEY)
+        val ref = id.trim()
+        val column = when {
+            Regex("^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", RegexOption.IGNORE_CASE).matches(ref) -> "id"
+            Regex("^BZD\\d{9}$", RegexOption.IGNORE_CASE).matches(ref) -> "public_product_id"
+            else -> "slug"
+        }
+        val r = SupabaseRest.request(
+            "GET",
+            "products?select=*,product_variants(*)&$column=eq.${SupabaseRest.enc(ref)}&approval_status=eq.approved&is_active=eq.true",
+            ANON_KEY
+        )
         val row = r.rows.objects().firstOrNull() ?: return@withContext null
         withPublicPrices(listOf(parseProduct(row))).firstOrNull()
     }

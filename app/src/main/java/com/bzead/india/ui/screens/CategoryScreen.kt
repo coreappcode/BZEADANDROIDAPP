@@ -111,6 +111,14 @@ fun CategoryScreen(
         BzeadRepository.refreshHomeContent()
     }
 
+    // The department list loads asynchronously; apply the requested category once it is known.
+    LaunchedEffect(mainDepartments) {
+        if (mainDepartments.none { it.id == selectedDepartmentId }) {
+            mainDepartments.firstOrNull { it.id == initialCategoryId || it.name.equals(initialCategoryId, ignoreCase = true) }
+                ?.let { selectedDepartmentId = it.id }
+        }
+    }
+
     val selectedDepartment = mainDepartments.find { it.id == selectedDepartmentId }
         ?: mainDepartments.firstOrNull()
 

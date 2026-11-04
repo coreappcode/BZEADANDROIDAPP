@@ -53,6 +53,8 @@ fun HomeScreen(
     onNavigateToSearch: () -> Unit,
     onNavigateToProduct: (String) -> Unit,
     onNavigateToCategory: (String) -> Unit,
+    onNavigateToSection: (String) -> Unit = {},
+    onOpenLink: (String) -> Unit = {},
     onNavigateToNotifications: () -> Unit,
     onNavigateToCart: () -> Unit = {},
     onNavigateToWishlist: () -> Unit = {},
@@ -131,7 +133,7 @@ fun HomeScreen(
                             banners = effectiveHeroBanners,
                             onBannerClick = { banner ->
                                 if (!banner.link.isNullOrBlank()) {
-                                    onNavigateToSearch()
+                                    onOpenLink(banner.link)
                                 }
                             }
                         )
@@ -142,7 +144,7 @@ fun HomeScreen(
                 item {
                     SectionHeaderWithSponsored(
                         title = "Featured Products",
-                        onSeeMoreClick = { onNavigateToSearch() },
+                        onSeeMoreClick = { onNavigateToSection("featured") },
                         isSponsored = true
                     )
                 }
@@ -184,7 +186,7 @@ fun HomeScreen(
                     val adBanner = effectiveAdBanners.firstOrNull { it.adSlot == 2 } ?: effectiveAdBanners.firstOrNull()
                     AdBannerBetweenSections(
                         banner = adBanner,
-                        onBannerClick = { onNavigateToSearch() }
+                        onBannerClick = { adBanner?.link?.takeIf { it.isNotBlank() }?.let(onOpenLink) }
                     )
                 }
 
@@ -192,7 +194,7 @@ fun HomeScreen(
                 item {
                     SectionHeaderWithSponsored(
                         title = "Trending Now \uD83D\uDCC8",
-                        onSeeMoreClick = { onNavigateToSearch() },
+                        onSeeMoreClick = { onNavigateToSection("trending") },
                         isSponsored = true
                     )
                 }
@@ -233,7 +235,7 @@ fun HomeScreen(
                 item {
                     SectionHeaderWithSponsored(
                         title = "Hot Deals \uD83D\uDD25",
-                        onSeeMoreClick = { onNavigateToSearch() },
+                        onSeeMoreClick = { onNavigateToSection("hot-deals") },
                         isSponsored = true
                     )
                 }

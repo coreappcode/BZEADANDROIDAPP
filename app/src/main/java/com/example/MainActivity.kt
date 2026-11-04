@@ -21,6 +21,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -63,6 +65,7 @@ sealed class AppScreen {
     data object Splash : AppScreen()
     data object Home : AppScreen()
     data object Category : AppScreen()
+    data class CategoryDetail(val categoryId: String) : AppScreen()
     data object Cart : AppScreen()
     data object Profile : AppScreen()
     data object Search : AppScreen()
@@ -120,9 +123,41 @@ class MainActivity : ComponentActivity(), com.razorpay.PaymentResultWithDataList
                 val currentBottomTab = when (currentScreen) {
                     AppScreen.Home -> BottomTab.HOME
                     AppScreen.Category -> BottomTab.CATEGORY
+                    is AppScreen.CategoryDetail -> BottomTab.CATEGORY
                     AppScreen.Cart -> BottomTab.CART
                     AppScreen.Profile -> BottomTab.ACCOUNT
                     else -> null
+                }
+
+                val linkScope = rememberCoroutineScope()
+                val openLink: (String) -> Unit = { raw ->
+                    val link = raw.trim()
+                    if (link.startsWith("/")) {
+                        // Relative links resolve against the web app's routes (App.tsx).
+                        val parts = link.substringBefore('?').substringBefore('#').trim('/').split('/')
+                        when {
+                            parts.size == 3 && parts[0] == "products" && parts[1] == "section" -> currentScreen = AppScreen.SectionProducts(parts[2])
+                            parts.size == 2 && parts[0] == "products" && (parts[1] == "featured" || parts[1] == "hot-deals") ->
+                                currentScreen = AppScreen.SectionProducts(parts[1])
+                            parts.size == 2 && parts[0] == "category" -> currentScreen = AppScreen.CategoryDetail(parts[1])
+                            parts.size == 2 && (parts[0] == "products" || parts[0] == "share") && parts[1] != "section" ->
+                                linkScope.launch {
+                                    BzeadRepository.resolveProductRef(parts[1])?.let { currentScreen = AppScreen.ProductDetail(it) }
+                                }
+                            parts.size == 1 && parts[0] == "cart" -> currentScreen = AppScreen.Cart
+                            parts.size == 1 && parts[0] == "wishlist" -> currentScreen = AppScreen.Wishlist
+                            parts.size == 1 && parts[0] == "orders" -> currentScreen = AppScreen.Orders
+                            parts.size == 1 && parts[0] == "notifications" -> currentScreen = AppScreen.Notifications
+                            parts.size == 1 && parts[0] == "profile" -> currentScreen = AppScreen.Profile
+                            parts.size == 1 && parts[0] == "contact" -> currentScreen = AppScreen.Contact
+                            parts.size == 1 && (parts[0] == "all-categories" || parts[0].isEmpty()) -> currentScreen = AppScreen.Home
+                        }
+                    } else if (link.startsWith("http://") || link.startsWith("https://")) {
+                        try {
+                            startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(link)))
+                        } catch (e: Exception) {
+                        }
+                    }
                 }
 
                 BackHandler(enabled = currentScreen != AppScreen.Home && currentScreen != AppScreen.Splash) {
@@ -174,13 +209,26 @@ class MainActivity : ComponentActivity(), com.razorpay.PaymentResultWithDataList
                                     HomeScreen(
                                         onNavigateToSearch = { currentScreen = AppScreen.Search },
                                         onNavigateToProduct = { id -> currentScreen = AppScreen.ProductDetail(id) },
-                                        onNavigateToCategory = { _ -> currentScreen = AppScreen.Category },
+                                        onNavigateToCategory = { id -> currentScreen = AppScreen.CategoryDetail(id) },
+                                        onNavigateToSection = { id -> currentScreen = AppScreen.SectionProducts(id) },
+                                        onOpenLink = openLink,
                                         onNavigateToNotifications = { currentScreen = AppScreen.Notifications },
                                         onNavigateToCart = { currentScreen = AppScreen.Cart },
                                         onNavigateToWishlist = { currentScreen = AppScreen.Wishlist },
                                         onNavigateToAccount = { currentScreen = AppScreen.Profile },
                                         onNavigateToLogin = { currentScreen = AppScreen.Login },
                                         onNavigateToSignup = { currentScreen = AppScreen.Signup },
+                                        snackbarHostState = snackbarHostState
+                                    )
+                                }
+                                is AppScreen.CategoryDetail -> {
+                                    CategoryScreen(
+                                        initialCategoryId = screen.categoryId,
+                                        onNavigateBack = { currentScreen = AppScreen.Home },
+                                        onNavigateToProduct = { id -> currentScreen = AppScreen.ProductDetail(id) },
+                                        onNavigateToSearch = { currentScreen = AppScreen.Search },
+                                        onNavigateToCart = { currentScreen = AppScreen.Cart },
+                                        onNavigateToWishlist = { currentScreen = AppScreen.Wishlist },
                                         snackbarHostState = snackbarHostState
                                     )
                                 }

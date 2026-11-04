@@ -23,11 +23,13 @@ data class ProductVariant(
 )
 
 data class Review(
+    val id: String,
     val author: String,
     val rating: Int,
+    val heading: String,
     val comment: String,
     val date: String,
-    val verifiedBuyer: Boolean = true
+    val images: List<String> = emptyList()
 )
 
 data class DeliveryAddress(

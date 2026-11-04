@@ -58,6 +58,8 @@ Both apps reference the same Supabase project. The primary mismatches are in And
 
 ### High: Review submission and review content are not connected
 
+**Status: FIXED in code (not compiled or run).** New `ReviewApi.kt` ports the web: `fetchProductReviews` (unflagged reviews, newest first, names from `profiles`), the duplicate-review check ("You have already reviewed this product."), review image upload to the `product-images` bucket (`reviews/<productId>-<ts>-<i>-<name>`, max 5 images, 5 MB, JPEG/PNG/WebP/GIF), `createReview` insert (rating, heading, comment, images, benefits) and the `products.rating`/`review_count` recalculation. `WriteReviewScreen` now matches the web form (rating starts empty, labels Poor–Excellent, 100/5000 character limits, photos, benefits checkboxes, terms unchecked, error banner, Cancel). The product page shows the web's review summary (average, per-star %, first 4 reviews, "Verified Purchase" fallback heading, first image). Sample reviews were deleted.
+
 **Android evidence:** `submitReview()` in `app/src/main/java/com/bzead/india/data/BzeadRepository.kt` returns success without saving a review. `app/src/main/java/com/bzead/india/ui/screens/ProductDetailScreen.kt` displays sample reviews.
 
 **Web reference:** `src/lib/productService.ts` reads and writes the `reviews` table.
@@ -65,6 +67,8 @@ Both apps reference the same Supabase project. The primary mismatches are in And
 **Impact:** Android review submissions are lost, and product detail screens may show placeholder reviews instead of current backend reviews.
 
 ### Medium: Country selection is static on Android
+
+**Status: FIXED (already live).** `fetchCountries()` reads the `countries` table with the web Signup query (`is_active`, ordered by name) and, as on the India storefront, Signup shows India only. The hard-coded list no longer exists. Not ported: the web address form's country/state dropdowns (`states` table); Android addresses stay India-only.
 
 **Android evidence:** `fetchCountries()` in `app/src/main/java/com/bzead/india/data/SupabaseClient.kt` returns a hard-coded list of five countries.
 
@@ -74,6 +78,8 @@ Both apps reference the same Supabase project. The primary mismatches are in And
 
 ### Medium: Some Android UI navigation discards the selected destination
 
+**Status: FIXED in code (not compiled or run).** Category taps open the category screen for the tapped category id (`AppScreen.CategoryDetail`), like `/category/:id`. Home "See more" opens the Featured / Trending / Hot Deals section screens (`/products/section/:section`). Hero and ad banners follow their `link`: in-app web routes (`/products/section/*`, `/products/featured|hot-deals`, `/category/:id`, `/products/<id|public id|slug>`, `/cart`, `/wishlist`, `/orders`, `/notifications`, `/profile`, `/contact`) open the matching screen; absolute `http(s)` links open in the browser; banners without a link do nothing. Product lookup now accepts id, `BZD#########` public id or slug and filters `approval_status=approved`, `is_active=true`, like `fetchProductById`. Note: the web "See more reviews" button does nothing, and Android matches that.
+
 **Category navigation:** `app/src/main/java/com/example/MainActivity.kt` ignores the category ID and always opens the general category screen. The web app links a selected category to `/category/{id}` in `src/components/layout/Categories.tsx`.
 
 **Banner navigation:** `app/src/main/java/com/bzead/india/ui/screens/HomeScreen.kt` sends banner taps to Search rather than following the banner link.
@@ -81,5 +87,7 @@ Both apps reference the same Supabase project. The primary mismatches are in And
 **Impact:** Tapping a category or promotional banner may not take the user to the content represented by that selection.
 
 ## Additional behavior to verify
+
+**Status: FIXED.** The HomeScreen sample-content fallbacks were removed in the catalog fix; empty or failed responses now show empty sections.
 
 The Android app does fetch banners, categories, and products from the matching Supabase project in `app/src/main/java/com/bzead/india/data/SupabaseClient.kt`. However, `app/src/main/java/com/bzead/india/ui/screens/HomeScreen.kt` substitutes sample content when live results are empty. This can make a backend failure or empty response appear to be a valid catalog response.
