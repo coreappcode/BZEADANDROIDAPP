@@ -76,7 +76,7 @@ fun OrderDetailScreen(
     modifier: Modifier = Modifier
 ) {
     val orders by BzeadRepository.orders.collectAsState()
-    val order = orders.find { it.id == orderId }
+    val order = orders.find { it.id == orderId } ?: BzeadRepository.findOrder(orderId)
     LaunchedEffect(orderId) { BzeadRepository.refreshOrders() }
     val scope = rememberCoroutineScope()
 

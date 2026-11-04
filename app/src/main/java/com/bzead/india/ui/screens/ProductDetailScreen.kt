@@ -90,7 +90,9 @@ fun ProductDetailScreen(
     snackbarHostState: SnackbarHostState,
     modifier: Modifier = Modifier
 ) {
-    val product = remember(productId) { BzeadRepository.getProductById(productId) }
+    val catalog by BzeadRepository.allProducts.collectAsState()
+    val product = remember(productId, catalog) { catalog.firstOrNull { it.id == productId } }
+    androidx.compose.runtime.LaunchedEffect(productId) { BzeadRepository.loadProductDetail(productId) }
     val wishlistIds by BzeadRepository.wishlistProductIds.collectAsState()
     val scope = rememberCoroutineScope()
 
@@ -102,7 +104,7 @@ fun ProductDetailScreen(
     }
 
     val isWishlisted = wishlistIds.contains(product.id)
-    var selectedVariant by remember { mutableStateOf<ProductVariant?>(product.variants.firstOrNull()) }
+    var selectedVariant by remember(product.variants) { mutableStateOf<ProductVariant?>(product.variants.firstOrNull()) }
     var pinCodeInput by remember { mutableStateOf("560103") }
     var pinVerified by remember { mutableStateOf(true) }
 
@@ -233,6 +235,7 @@ fun ProductDetailScreen(
                         Spacer(modifier = Modifier.height(8.dp))
 
                         // Rating Bar
+                        if (product.rating > 0f) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(
                                 modifier = Modifier
@@ -262,6 +265,7 @@ fun ProductDetailScreen(
                                 fontSize = 12.sp,
                                 color = TextSecondary
                             )
+                        }
                         }
 
                         Spacer(modifier = Modifier.height(12.dp))

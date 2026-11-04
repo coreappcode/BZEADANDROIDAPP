@@ -136,6 +136,7 @@ fun ProductCard(
 
             Spacer(modifier = Modifier.height(6.dp))
 
+            if (product.rating > 0f) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     imageVector = Icons.Default.Star,
@@ -150,6 +151,7 @@ fun ProductCard(
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary
                 )
+            }
             }
 
             Spacer(modifier = Modifier.height(6.dp))

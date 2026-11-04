@@ -21,31 +21,31 @@ import kotlinx.coroutines.flow.asStateFlow
 
 object BzeadRepository {
 
-    private val _heroBanners = MutableStateFlow<List<HeroBanner>>(SampleCatalogData.liveHeroBanners)
+    private val _heroBanners = MutableStateFlow<List<HeroBanner>>(emptyList())
     val heroBanners: StateFlow<List<HeroBanner>> = _heroBanners.asStateFlow()
 
-    private val _adBanners = MutableStateFlow<List<AdBanner>>(SampleCatalogData.liveAdBanners)
+    private val _adBanners = MutableStateFlow<List<AdBanner>>(emptyList())
     val adBanners: StateFlow<List<AdBanner>> = _adBanners.asStateFlow()
 
-    private val _liveCategories = MutableStateFlow<List<CategoryItem>>(SampleCatalogData.categories)
+    private val _liveCategories = MutableStateFlow<List<CategoryItem>>(emptyList())
     val liveCategories: StateFlow<List<CategoryItem>> = _liveCategories.asStateFlow()
 
-    private val _featuredProducts = MutableStateFlow<List<Product>>(SampleCatalogData.products.filter { it.isFeatured })
+    private val _featuredProducts = MutableStateFlow<List<Product>>(emptyList())
     val featuredProducts: StateFlow<List<Product>> = _featuredProducts.asStateFlow()
 
-    private val _trendingProducts = MutableStateFlow<List<Product>>(SampleCatalogData.products.filter { it.isTrending })
+    private val _trendingProducts = MutableStateFlow<List<Product>>(emptyList())
     val trendingProducts: StateFlow<List<Product>> = _trendingProducts.asStateFlow()
 
-    private val _hotDealsProducts = MutableStateFlow<List<Product>>(SampleCatalogData.products.filter { it.isDeal })
+    private val _hotDealsProducts = MutableStateFlow<List<Product>>(emptyList())
     val hotDealsProducts: StateFlow<List<Product>> = _hotDealsProducts.asStateFlow()
 
-    private val _allProducts = MutableStateFlow<List<Product>>(SampleCatalogData.products)
+    private val _allProducts = MutableStateFlow<List<Product>>(emptyList())
     val allProducts: StateFlow<List<Product>> = _allProducts.asStateFlow()
 
-    private val _mainDepartments = MutableStateFlow<List<CategoryItem>>(SampleCatalogData.mainDepartments)
+    private val _mainDepartments = MutableStateFlow<List<CategoryItem>>(emptyList())
     val mainDepartments: StateFlow<List<CategoryItem>> = _mainDepartments.asStateFlow()
 
-    private val _categorySectionsMap = MutableStateFlow<Map<String, List<SubCategorySection>>>(SampleCatalogData.departmentSectionsMap)
+    private val _categorySectionsMap = MutableStateFlow<Map<String, List<SubCategorySection>>>(emptyMap())
     val categorySectionsMap: StateFlow<Map<String, List<SubCategorySection>>> = _categorySectionsMap.asStateFlow()
 
     val allCategories: List<CategoryItem> get() = _liveCategories.value
@@ -132,32 +132,76 @@ object BzeadRepository {
     suspend fun refreshHomeContent() {
         _isHomeLoading.value = true
         try {
-            val (hero, ad) = SupabaseClient.fetchBanners()
-            if (hero.isNotEmpty()) _heroBanners.value = hero
-            if (ad.isNotEmpty()) _adBanners.value = ad
+            SupabaseClient.fetchBanners()?.let { (hero, ad) ->
+                _heroBanners.value = hero
+                _adBanners.value = ad
+            }
 
-            val (mains, tree) = SupabaseClient.fetchCategoryTree()
-            if (mains.isNotEmpty()) _mainDepartments.value = mains
-            if (tree.isNotEmpty()) _categorySectionsMap.value = tree
+            SupabaseClient.fetchCategoryTree()?.let { (mains, tree) ->
+                _mainDepartments.value = mains
+                _categorySectionsMap.value = tree
+                // Home shortcuts: the first 16 level-1 categories (web `Categories`).
+                _liveCategories.value = mains.take(16)
+            }
 
-            val cats = SupabaseClient.fetchCategories()
-            if (cats.isNotEmpty()) _liveCategories.value = cats
-
-            val prods = SupabaseClient.fetchProducts()
-            if (prods.isNotEmpty()) {
-                _allProducts.value = prods
-                val feat = prods.filter { it.isFeatured }
-                if (feat.isNotEmpty()) _featuredProducts.value = feat
-                val trend = prods.filter { it.isTrending }
-                if (trend.isNotEmpty()) _trendingProducts.value = trend
-                val deals = prods.filter { it.isDeal }
-                if (deals.isNotEmpty()) _hotDealsProducts.value = deals
+            SupabaseClient.fetchHomeSections()?.let { sections ->
+                _featuredProducts.value = sections["featured"].orEmpty()
+                _trendingProducts.value = sections["trending"].orEmpty()
+                _hotDealsProducts.value = sections["hot-deals"].orEmpty()
+                val seen = LinkedHashMap<String, Product>()
+                (_featuredProducts.value + _trendingProducts.value + _hotDealsProducts.value).forEach { seen.putIfAbsent(it.id, it) }
+                _allProducts.value = (seen.values + _allProducts.value.filterNot { seen.containsKey(it.id) }).toList()
             }
         } catch (e: Exception) {
             e.printStackTrace()
         } finally {
             _isHomeLoading.value = false
         }
+    }
+
+    private val _sectionProducts = MutableStateFlow<Map<String, List<Product>>>(emptyMap())
+    val sectionProducts: StateFlow<Map<String, List<Product>>> = _sectionProducts.asStateFlow()
+
+    /** Full "see more" list for a section (web `SectionProducts`, up to 200). */
+    suspend fun loadSection(section: String) {
+        val key = normalizeSection(section) ?: return
+        val list = SupabaseClient.fetchSection(key, 200) ?: return
+        _sectionProducts.value = _sectionProducts.value + (key to list)
+        mergeIntoCatalog(list)
+    }
+
+    private val _categoryProducts = MutableStateFlow<Map<String, List<Product>>>(emptyMap())
+    val categoryProducts: StateFlow<Map<String, List<Product>>> = _categoryProducts.asStateFlow()
+
+    suspend fun loadCategoryProducts(categoryId: String) {
+        val list = SupabaseClient.fetchCategoryProducts(categoryId) ?: return
+        _categoryProducts.value = _categoryProducts.value + (categoryId to list)
+        mergeIntoCatalog(list)
+    }
+
+    private fun mergeIntoCatalog(products: List<Product>) {
+        val ids = products.map { it.id }.toSet()
+        _allProducts.value = products + _allProducts.value.filterNot { it.id in ids }
+    }
+
+    /** Loads the product row with variants; used by the product page. */
+    suspend fun loadProductDetail(id: String) {
+        SupabaseClient.fetchProductDetail(id)?.let { mergeIntoCatalog(listOf(it)) }
+    }
+
+    /** Web `search_products_catalog` search. Null means the request failed. */
+    suspend fun searchCatalog(query: String): List<Product>? {
+        if (query.isBlank()) return emptyList()
+        val results = SupabaseClient.searchProducts(query.trim()) ?: return null
+        mergeIntoCatalog(results)
+        return results
+    }
+
+    private fun normalizeSection(section: String): String? = when (section.lowercase()) {
+        "featured" -> "featured"
+        "hot-deals", "deals" -> "hot-deals"
+        "trending" -> "trending"
+        else -> null
     }
 
 
@@ -277,15 +321,6 @@ object BzeadRepository {
         return _allProducts.value.firstOrNull { it.id == id }
     }
 
-    fun searchProducts(query: String): List<Product> {
-        if (query.isBlank()) return emptyList()
-        return _allProducts.value.filter {
-            it.title.contains(query, ignoreCase = true) ||
-            it.brand.contains(query, ignoreCase = true) ||
-            it.category.contains(query, ignoreCase = true)
-        }
-    }
-
     fun markAllNotificationsRead() {
         _notifications.value = _notifications.value.map { it.copy(isRead = true) }
         persist { t, uid -> UserDataApi.markAllNotificationsRead(t, uid).error }
@@ -385,14 +420,11 @@ object BzeadRepository {
     }
 
     fun getProductsBySection(section: String): List<Product> {
-        val lowerSection = section.lowercase()
-        return _allProducts.value.filter { product ->
-            when (lowerSection) {
-                "featured" -> product.isFeatured
-                "hot-deals", "deals" -> product.isDeal || product.discountPercent > 15
-                "trending" -> product.isTrending || product.rating >= 4.5f
-                else -> true
-            }
+        val key = normalizeSection(section) ?: return emptyList()
+        return _sectionProducts.value[key] ?: when (key) {
+            "featured" -> _featuredProducts.value
+            "hot-deals" -> _hotDealsProducts.value
+            else -> _trendingProducts.value
         }
     }
 
@@ -406,30 +438,309 @@ object BzeadRepository {
         return true
     }
 
-    fun placeOrder(paymentMethod: String, address: DeliveryAddress): Order {
-        val currentCart = _cartItems.value
-        val items = currentCart.map { OrderItem(product = it.product, quantity = it.quantity, unitPrice = it.unitPrice) }
-        val subtotal = items.sumOf { it.totalPrice }
-        val newOrder = Order(
-            id = "ord_${System.currentTimeMillis()}",
-            orderNumber = "BZ-${(10000..99999).random()}",
-            date = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.US).format(java.util.Date()),
-            status = OrderStatus.PENDING,
-            items = items,
-            subtotal = subtotal,
-            shippingFee = if (subtotal >= 499.0) 0.0 else 40.0,
-            shippingAddress = address,
-            paymentMethod = paymentMethod
-        )
-        _orders.value = listOf(newOrder) + _orders.value
-        // Local-only until checkout persistence (create_order_secure) is implemented; do not delete backend cart rows without a real order.
+    // ---------- Checkout (port of the web OrderSummary + Checkout Razorpay flow) ----------
+
+    private var appContext: android.content.Context? = null
+
+    /** Cart rows chosen on the cart screen (web `beauzead_checkout_selected_cart_ids`). */
+    private val checkoutSelectedIds = MutableStateFlow<Set<String>>(emptySet())
+
+    fun setCheckoutSelection(cartItemIds: Set<String>) {
+        checkoutSelectedIds.value = cartItemIds
+    }
+
+    private val _checkoutState = MutableStateFlow<CheckoutState>(CheckoutState.Idle)
+    val checkoutState: StateFlow<CheckoutState> = _checkoutState.asStateFlow()
+    fun resetCheckoutState() {
+        if (_checkoutState.value !is CheckoutState.Processing) _checkoutState.value = CheckoutState.Idle
+    }
+
+    /** Orders shown as "processing" while payment confirmation is still in flight (web temp pending orders). */
+    private val _tempOrders = MutableStateFlow<List<Order>>(emptyList())
+
+    fun findOrder(id: String): Order? = _orders.value.firstOrNull { it.id == id } ?: _tempOrders.value.firstOrNull { it.id == id }
+
+    private fun activeCartItems(): List<CartItem> {
+        val selected = checkoutSelectedIds.value
+        val all = _cartItems.value
+        val chosen = if (selected.isEmpty()) all else all.filter { it.id in selected }
+        return chosen.ifEmpty { all }
+    }
+
+    private fun activeAddress(): DeliveryAddress? = selectedAddress.value ?: _addresses.value.firstOrNull()
+
+    private suspend fun checkoutToken(): String =
+        validToken() ?: throw CheckoutException("Authentication expired. Please log in again.")
+
+    private suspend fun buildCheckoutItems(token: String): List<CheckoutItem> {
+        val cart = activeCartItems()
+        val sellers = CheckoutApi.fetchSellerIds(cart.map { it.product.id }, token)
+        return cart.map {
+            CheckoutItem(
+                cartItemId = it.id,
+                productId = it.product.id,
+                productName = it.product.title,
+                quantity = it.quantity,
+                unitPrice = it.unitPrice,
+                sellerId = sellers[it.product.id],
+                selectedSize = it.selectedSize,
+                selectedColor = it.selectedColor,
+                selectedVariantId = it.selectedVariantId,
+                selectedVariantSku = it.selectedVariantSku,
+                productImage = it.product.imageUrl
+            )
+        }
+    }
+
+    /** Items re-priced with the verified prices from the quote, as the web passes them to checkout. */
+    private fun applyQuote(items: List<CheckoutItem>, quote: CheckoutQuote): List<CheckoutItem> =
+        items.mapIndexed { i, item ->
+            item.copy(
+                unitPrice = quote.unitPrices[i],
+                selectedVariantId = quote.variantIds[i] ?: item.selectedVariantId,
+                selectedVariantSku = quote.variantSkus[i] ?: item.selectedVariantSku
+            )
+        }
+
+    class OrderSummaryData(
+        val items: List<CheckoutItem>,
+        val quote: CheckoutQuote,
+        val address: DeliveryAddress,
+        val missingWeightNames: List<String>,
+        val serviceable: Boolean,
+        val estimatedDeliveryDate: String?
+    )
+
+    /** Web OrderSummary pricing effect: quote, package-weight check, serviceability, then delivery estimate. */
+    suspend fun loadOrderSummary(): OrderSummaryData {
+        val token = checkoutToken()
+        val address = activeAddress() ?: throw CheckoutException("Please add a delivery address before placing the order.")
+        val base = buildCheckoutItems(token)
+        if (base.isEmpty()) throw CheckoutException("Your cart is empty.")
+        val quote = CheckoutApi.calculateQuote(base, address.country, address.pinCode, token)
+        val items = applyQuote(base, quote)
+        val missing = CheckoutApi.productsMissingWeight(items.map { it.productId }, token)
+        val pin = address.pinCode.replace(Regex("\\s+"), "")
+        var serviceable = true
+        if (pin.length == 6) {
+            serviceable = CheckoutApi.isServiceable(pin, items.firstOrNull()?.sellerId ?: session?.userId.orEmpty(), token)
+        }
+        var eta: String? = null
+        if (serviceable) {
+            val tat = CheckoutApi.fetchTat(items.map { it.productId }, pin, token)
+            if (tat.maxTatDays > 0 && tat.maxExpectedDate.isNotEmpty()) eta = tat.maxExpectedDate
+        }
+        return OrderSummaryData(items, quote, address, missing, serviceable, eta)
+    }
+
+    /** Web OrderSummary "Proceed to payment" stock re-check. Returns an error message or null. */
+    suspend fun recheckStock(items: List<CheckoutItem>): String? = CheckoutApi.checkStock(items, checkoutToken())
+
+    class PreparedPayment(
+        val items: List<CheckoutItem>,
+        val quote: CheckoutQuote,
+        val address: DeliveryAddress,
+        val razorpayOrder: RazorpayOrder
+    )
+
+    /** Web Checkout mount: refresh the live quote, enforce the minimum order, then create the Razorpay order. */
+    suspend fun prepareRazorpayPayment(): PreparedPayment {
+        val token = checkoutToken()
+        val uid = session?.userId ?: throw CheckoutException("Authentication expired. Please log in again.")
+        val address = activeAddress() ?: throw CheckoutException("Please add a delivery address before placing the order.")
+        val base = buildCheckoutItems(token)
+        if (base.isEmpty()) throw CheckoutException("Your cart is empty.")
+        val quote = CheckoutApi.calculateQuote(base, address.country, address.pinCode, token)
+        minimumOrderMessage(address, quote)?.let { throw CheckoutException(it) }
+        val amountPaise = Math.round(quote.total * 100)
+        if (amountPaise <= 0) throw CheckoutException("Invalid checkout total. Please return to review and try again.")
+        val order = CheckoutApi.createRazorpayOrder(token, amountPaise, uid, base.size)
+        return PreparedPayment(applyQuote(base, quote), quote, address, order)
+    }
+
+    fun minimumOrderMessage(address: DeliveryAddress, quote: CheckoutQuote): String? {
+        val m = quote.minimumOrder?.takeIf { !it.isMet } ?: return null
+        val remaining = (m.minimumInr - m.currentSubtotalInr).coerceAtLeast(0.0)
+        return "Minimum order for India-origin products shipping to ${address.country.trim().ifEmpty { "selected destination" }} is " +
+            "${formatInr(m.minimumInr)} (${formatInr(m.minimumInr)}). Add ${formatInr(remaining)} more to continue."
+    }
+
+    private fun formatInr(v: Double): String = "₹" + java.text.DecimalFormat("#,##0.##").format(v)
+
+    class BillingAddress(val sameAsShipping: Boolean, val street: String, val city: String, val state: String, val postalCode: String)
+
+    private fun nextTempOrderId(): String {
+        val dateToken = java.text.SimpleDateFormat("ddMMyy", java.util.Locale.US).format(java.util.Date())
+        val prefs = appContext?.getSharedPreferences("bzead_checkout", android.content.Context.MODE_PRIVATE)
+        val key = "temp_order_seq_DOM_$dateToken"
+        val next = (prefs?.getInt(key, 0) ?: 0) + 1
+        prefs?.edit()?.putInt(key, next)?.apply()
+        return "TMDOM$dateToken${next.toString().padStart(7, '0')}"
+    }
+
+    /** Web `handleRazorpaySubmit`. Progress and the outcome are published through [checkoutState]. */
+    fun startRazorpayPayment(activity: android.app.Activity, prepared: PreparedPayment, billing: BillingAddress) {
+        if (_checkoutState.value is CheckoutState.Processing) return
+        _checkoutState.value = CheckoutState.Processing
+        authScope.launch { runRazorpayPayment(activity, prepared, billing) }
+    }
+
+    private suspend fun runRazorpayPayment(activity: android.app.Activity, prepared: PreparedPayment, billing: BillingAddress) {
+        val items = prepared.items
+        val quote = prepared.quote
+        val address = prepared.address
+        val rzpOrder = prepared.razorpayOrder
+        val paymentIntentId = rzpOrder.orderId
+        var paymentTaken = false
+        try {
+            val uid = session?.userId ?: throw CheckoutException("Authentication expired. Please log in again.")
+            val token = checkoutToken()
+            val pin = address.pinCode.replace(Regex("\\s+"), "")
+            val sellerId = items.firstOrNull()?.sellerId ?: uid
+            if (pin.length == 6 && !CheckoutApi.isServiceable(pin, sellerId, token)) {
+                _checkoutState.value = CheckoutState.Failure(CheckoutApi.PINCODE_NOT_SERVICEABLE)
+                return
+            }
+            val tat = CheckoutApi.fetchTat(items.map { it.productId }, pin, token)
+
+            val customerName = address.fullName.ifBlank { _userName.value.orEmpty() }
+            val customerPhone = address.phoneNumber
+            val customerEmail = address.email.ifBlank { _userEmail.value.orEmpty() }
+
+            val shippingAddress = JSONObject()
+                .put("street", address.streetAddress)
+                .put("city", address.city)
+                .put("state", address.state)
+                .put("postalCode", address.pinCode)
+                .put("country", address.country)
+                .put("countryCode", "IN")
+            val billingAddress = if (billing.sameAsShipping) JSONObject(shippingAddress.toString())
+            else JSONObject(shippingAddress.toString())
+                .put("street", billing.street)
+                .put("city", billing.city)
+                .put("state", billing.state)
+                .put("postalCode", billing.postalCode)
+            val enrichedShipping = JSONObject(shippingAddress.toString())
+                .put("full_name", customerName.ifEmpty { JSONObject.NULL })
+                .put("phone", customerPhone.ifEmpty { JSONObject.NULL })
+                .put("expected_delivery_days", if (tat.maxTatDays != 0) tat.maxTatDays else JSONObject.NULL)
+                .put("expected_delivery_date", tat.maxExpectedDate.ifEmpty { JSONObject.NULL })
+
+            val productMeta = CheckoutApi.fetchProductMeta(items.map { it.productId }, token)
+            val rpcParams = CheckoutApi.buildRpcParams(
+                customerId = uid,
+                items = items,
+                productMeta = productMeta,
+                shippingAddress = enrichedShipping,
+                billingAddress = billingAddress,
+                customerPhone = customerPhone,
+                notes = address.deliveryNotes,
+                paymentIntentId = paymentIntentId,
+                shippingAmount = quote.shipping,
+                actualShippingCost = quote.actualShippingCost,
+                platformShippingMargin = quote.platformShippingMargin,
+                expectedDeliveryDate = tat.maxExpectedDate,
+                expectedDeliveryDays = tat.maxTatDays
+            )
+
+            if (!CheckoutApi.saveSnapshot(token, uid, paymentIntentId, rpcParams)) {
+                _checkoutState.value = CheckoutState.Failure("Unable to prepare secure order recovery right now. Please try again.")
+                return
+            }
+
+            val result = RazorpayLauncher.open(
+                activity, rzpOrder, customerName, customerEmail, customerPhone,
+                "${items.size} item${if (items.size != 1) "s" else ""}"
+            )
+            val payment = when (result) {
+                is RazorpayLauncher.Result.Dismissed -> {
+                    _checkoutState.value = CheckoutState.Idle
+                    return
+                }
+                is RazorpayLauncher.Result.Failed -> throw CheckoutException("Payment could not be completed right now. Please try again.")
+                is RazorpayLauncher.Result.Success -> result.payment
+            }
+            paymentTaken = true
+
+            var outcome = CheckoutApi.verifyPayment(checkoutToken(), payment)
+            var attempt = 0
+            while (attempt < 2 && outcome !is VerifyOutcome.Confirmed && !(outcome is VerifyOutcome.Error && outcome.fatal)) {
+                kotlinx.coroutines.delay(1500L * (attempt + 1))
+                outcome = CheckoutApi.verifyPayment(checkoutToken(), payment)
+                attempt++
+            }
+
+            var orderId: String? = (outcome as? VerifyOutcome.Confirmed)?.orderId
+            if (orderId == null && !(outcome is VerifyOutcome.Error && outcome.fatal)) {
+                val recovered = CheckoutApi.waitForOrder(checkoutToken(), paymentIntentId, 12_000, 1_500)
+                if (recovered != null && recovered.second in listOf("completed", "succeeded", "paid")) orderId = recovered.first
+            }
+
+            if (orderId != null) {
+                finishCheckout(uid)
+                _checkoutState.value = CheckoutState.Success(orderId)
+                return
+            }
+
+            if (outcome is VerifyOutcome.Error && outcome.fatal) {
+                _checkoutState.value = CheckoutState.Failure("${outcome.message} Payment reference: ${payment.paymentId}")
+                return
+            }
+
+            // Money was taken but confirmation is still in flight: show the order as processing.
+            val tempId = nextTempOrderId()
+            val temp = Order(
+                id = tempId,
+                orderNumber = tempId,
+                date = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.US).format(java.util.Date()),
+                status = OrderStatus.PROCESSING,
+                items = items.map {
+                    val cart = _cartItems.value.firstOrNull { c -> c.id == it.cartItemId }
+                    OrderItem(
+                        product = cart?.product ?: Product(id = it.productId, title = it.productName, price = it.unitPrice, imageUrl = it.productImage),
+                        quantity = it.quantity,
+                        unitPrice = it.unitPrice
+                    )
+                },
+                subtotal = quote.subtotal,
+                shippingFee = quote.shipping,
+                discount = quote.offerDiscount,
+                totalAmount = quote.total,
+                shippingAddress = address,
+                paymentMethod = "razorpay",
+                paymentStatus = "pending"
+            )
+            _tempOrders.value = listOf(temp) + _tempOrders.value.filterNot { it.id == tempId }.take(19)
+            finishCheckout(uid)
+            _checkoutState.value = CheckoutState.Success(tempId)
+        } catch (e: Exception) {
+            if (paymentTaken) {
+                val recovered = runCatching { CheckoutApi.waitForOrder(checkoutToken(), paymentIntentId, 12_000, 1_500) }.getOrNull()
+                val uid = session?.userId
+                if (recovered != null && uid != null) {
+                    finishCheckout(uid)
+                    _checkoutState.value = CheckoutState.Success(recovered.first)
+                    return
+                }
+            }
+            _checkoutState.value = CheckoutState.Failure(
+                e.message?.takeIf { it.isNotBlank() } ?: "Payment could not be completed right now. Please try again."
+            )
+        }
+    }
+
+    /** Web `clearCheckoutCartState` followed by loading the new order. */
+    private suspend fun finishCheckout(uid: String) {
+        validToken()?.let { UserDataApi.clearCart(it, uid) }
         _cartItems.value = emptyList()
-        return newOrder
+        checkoutSelectedIds.value = emptySet()
+        loadOrders(uid)
     }
 
     /** Restores a persisted session (token refresh + profile/ban check), like the web INITIAL_SESSION flow. */
     fun init(context: android.content.Context) {
         if (sessionStore != null) return
+        appContext = context.applicationContext
         val store = SessionStore(context.applicationContext)
         sessionStore = store
         val refreshToken = store.loadRefreshToken() ?: return

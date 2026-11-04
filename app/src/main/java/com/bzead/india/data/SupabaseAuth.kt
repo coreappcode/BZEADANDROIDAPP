@@ -165,7 +165,7 @@ object SupabaseAuth {
                     .header("Prefer", "return=minimal")
                     .build()
                 okhttp3.OkHttpClient().newCall(request).execute().close()
-            } catch (_: Exception) {
+            } catch (ignored: Exception) {
             }
         }
     }

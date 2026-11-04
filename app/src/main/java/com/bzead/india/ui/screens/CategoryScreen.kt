@@ -95,6 +95,15 @@ fun CategoryScreen(
     }
 
     var selectedSubcategoryFilter by remember { mutableStateOf<String?>(null) }
+    var selectedSubcategoryId by remember { mutableStateOf<String?>(null) }
+    val categoryProducts by BzeadRepository.categoryProducts.collectAsState()
+    var categoryLoading by remember { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(selectedSubcategoryId) {
+        val id = selectedSubcategoryId ?: return@LaunchedEffect
+        categoryLoading = true
+        BzeadRepository.loadCategoryProducts(id)
+        categoryLoading = false
+    }
     var sortBy by remember { mutableStateOf("featured") }
     val scope = rememberCoroutineScope()
 
@@ -234,7 +243,7 @@ fun CategoryScreen(
                 }
 
                 IconButton(
-                    onClick = { selectedSubcategoryFilter = null },
+                    onClick = { selectedSubcategoryFilter = null; selectedSubcategoryId = null },
                     modifier = Modifier.size(24.dp)
                 ) {
                     Icon(
@@ -247,16 +256,13 @@ fun CategoryScreen(
             }
 
             // Filtered Products View
-            val filteredProds = allProducts.filter { prod ->
-                prod.title.contains(selectedSubcategoryFilter!!, ignoreCase = true) ||
-                prod.category.contains(selectedSubcategoryFilter!!, ignoreCase = true) ||
-                prod.categoryId.equals(selectedSubcategoryFilter, ignoreCase = true) ||
-                prod.subCategoryId.equals(selectedSubcategoryFilter, ignoreCase = true) ||
-                selectedDepartment?.id?.let { prod.categoryId == it || prod.category.contains(it, ignoreCase = true) } == true ||
-                selectedDepartment?.name?.let { prod.category.contains(it, ignoreCase = true) } == true
-            }
+            val filteredProds = categoryProducts[selectedSubcategoryId].orEmpty()
 
-            if (filteredProds.isEmpty()) {
+            if (categoryLoading && filteredProds.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    androidx.compose.material3.CircularProgressIndicator()
+                }
+            } else if (filteredProds.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
@@ -462,6 +468,7 @@ fun CategoryScreen(
                                                                 .clip(RoundedCornerShape(8.dp))
                                                                 .clickable {
                                                                     selectedSubcategoryFilter = subItem.name
+                                                                    selectedSubcategoryId = subItem.id
                                                                 }
                                                                 .padding(vertical = 4.dp),
                                                             horizontalAlignment = Alignment.CenterHorizontally

@@ -54,7 +54,7 @@ fun OrderSuccessScreen(
     modifier: Modifier = Modifier
 ) {
     val order = remember(orderId) {
-        BzeadRepository.orders.value.find { it.id == orderId } ?: BzeadRepository.orders.value.firstOrNull()
+        BzeadRepository.findOrder(orderId)
     }
 
     Surface(

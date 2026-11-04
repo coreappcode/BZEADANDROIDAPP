@@ -40,7 +40,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bzead.india.data.BzeadRepository
-import com.bzead.india.data.SampleCatalogData
 import com.bzead.india.theme.BzeadHeaderNavy
 import com.bzead.india.ui.components.AdBannerBetweenSections
 import com.bzead.india.ui.components.BzeadTopHeader
@@ -78,12 +77,12 @@ fun HomeScreen(
     val cartCount = cartItems.sumOf { it.quantity }
     val wishlistCount = wishlistIds.size
 
-    val effectiveHeroBanners = if (heroBanners.isNotEmpty()) heroBanners else SampleCatalogData.liveHeroBanners
-    val effectiveAdBanners = if (adBanners.isNotEmpty()) adBanners else SampleCatalogData.liveAdBanners
-    val effectiveCategories = if (liveCategories.isNotEmpty()) liveCategories else SampleCatalogData.categories
-    val effectiveFeatured = if (featuredProducts.isNotEmpty()) featuredProducts else SampleCatalogData.products.filter { it.isFeatured }
-    val effectiveTrending = if (trendingProducts.isNotEmpty()) trendingProducts else SampleCatalogData.products.filter { it.isTrending }
-    val effectiveHotDeals = if (hotDealsProducts.isNotEmpty()) hotDealsProducts else SampleCatalogData.products.filter { it.isDeal }
+    val effectiveHeroBanners = heroBanners
+    val effectiveAdBanners = adBanners
+    val effectiveCategories = liveCategories
+    val effectiveFeatured = featuredProducts
+    val effectiveTrending = trendingProducts
+    val effectiveHotDeals = hotDealsProducts
 
     var selectedPillCategory by remember { mutableStateOf("All") }
 

@@ -34,6 +34,27 @@ internal object SupabaseRest {
     fun inList(values: Collection<String>): String =
         values.joinToString(",", "(", ")") { "\"" + it.replace("\"", "\\\"") + "\"" }
 
+    /** Raw HTTP result; `code` is -1 on a network failure. */
+    data class RawResult(val code: Int, val body: String) {
+        val ok: Boolean get() = code in 200..299
+        fun json(): JSONObject? = runCatching { JSONObject(body) }.getOrNull()
+    }
+
+    /** POST JSON to a Supabase edge function (`functions/v1/<name>`) with the given bearer token. */
+    suspend fun callFunction(name: String, token: String, body: JSONObject): RawResult = withContext(Dispatchers.IO) {
+        try {
+            val req = Request.Builder()
+                .url("${SupabaseClient.HOST_URL}/functions/v1/$name")
+                .header("apikey", SupabaseClient.ANON_KEY)
+                .header("Authorization", "Bearer $token")
+                .post(body.toString().toRequestBody(json))
+                .build()
+            client.newCall(req).execute().use { res -> RawResult(res.code, res.body?.string().orEmpty()) }
+        } catch (e: Exception) {
+            RawResult(-1, "")
+        }
+    }
+
     suspend fun request(
         method: String,
         path: String,

@@ -88,7 +88,15 @@ sealed class AppScreen {
     data object Contact : AppScreen()
 }
 
-class MainActivity : ComponentActivity() {
+class MainActivity : ComponentActivity(), com.razorpay.PaymentResultWithDataListener {
+    override fun onPaymentSuccess(razorpayPaymentId: String?, data: com.razorpay.PaymentData?) {
+        com.bzead.india.data.RazorpayLauncher.onSuccess(data, razorpayPaymentId)
+    }
+
+    override fun onPaymentError(code: Int, description: String?, data: com.razorpay.PaymentData?) {
+        com.bzead.india.data.RazorpayLauncher.onError(code, description)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         com.bzead.india.data.BzeadRepository.init(applicationContext)

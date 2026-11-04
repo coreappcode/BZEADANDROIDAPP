@@ -42,7 +42,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -76,14 +79,60 @@ fun OrderSummaryScreen(
     val cartItems by BzeadRepository.cartItems.collectAsState()
     val selectedAddress by BzeadRepository.selectedAddress.collectAsState()
 
-    var isExpressShipping by remember { mutableStateOf(false) }
-    var selectedPaymentOption by remember { mutableStateOf("ONLINE") } // "ONLINE" or "COD"
+    val scope = rememberCoroutineScope()
+    var data by remember { mutableStateOf<BzeadRepository.OrderSummaryData?>(null) }
+    var loading by remember { mutableStateOf(true) }
+    var loadError by remember { mutableStateOf<String?>(null) }
+    var actionError by remember { mutableStateOf<String?>(null) }
+    var proceeding by remember { mutableStateOf(false) }
 
-    val subtotal = cartItems.sumOf { it.totalPrice }
-    val baseShipping = if (subtotal >= 499.0) 0.0 else 40.0
-    val shippingFee = if (isExpressShipping) baseShipping + 99.0 else baseShipping
-    val discount = if (subtotal >= 2000.0) 150.0 else 0.0
-    val grandTotal = (subtotal + shippingFee - discount).coerceAtLeast(0.0)
+    LaunchedEffect(cartItems, selectedAddress) {
+        loading = true
+        loadError = null
+        try {
+            data = BzeadRepository.loadOrderSummary()
+        } catch (e: Exception) {
+            data = null
+            loadError = e.message?.takeIf { it.isNotBlank() } ?: "Unable to calculate shipping charges right now."
+        } finally {
+            loading = false
+        }
+    }
+
+    val summary = data
+    val subtotal = summary?.quote?.subtotal ?: 0.0
+    val shippingFee = summary?.quote?.shipping ?: 0.0
+    val discount = summary?.quote?.offerDiscount ?: 0.0
+    val grandTotal = summary?.quote?.total ?: 0.0
+
+    fun proceed() {
+        actionError = null
+        val d = data
+        val addr = selectedAddress
+        when {
+            loading -> actionError = "Shipping charges and delivery estimate are still refreshing. Please wait a moment."
+            loadError != null -> actionError = loadError
+            d == null || d.quote.total <= 0 -> actionError = "Pricing is still loading. Please wait a moment and try again."
+            d.missingWeightNames.isNotEmpty() ->
+                actionError = "Some products are missing package weight information required for accurate shipping. Please contact the seller."
+            !d.serviceable -> actionError = com.bzead.india.data.CheckoutApi.PINCODE_NOT_SERVICEABLE
+            addr != null && BzeadRepository.minimumOrderMessage(addr, d.quote) != null ->
+                actionError = BzeadRepository.minimumOrderMessage(addr, d.quote)
+            else -> {
+                proceeding = true
+                scope.launch {
+                    try {
+                        val stockError = BzeadRepository.recheckStock(d.items)
+                        if (stockError != null) actionError = stockError else onProceedToPayment()
+                    } catch (e: Exception) {
+                        actionError = "Could not verify stock availability. Please try again."
+                    } finally {
+                        proceeding = false
+                    }
+                }
+            }
+        }
+    }
 
     Column(
         modifier = modifier
@@ -216,7 +265,7 @@ fun OrderSummaryScreen(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "Items (${cartItems.size})",
+                                text = "Items (${summary?.items?.size ?: cartItems.size})",
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = TextPrimary
@@ -236,7 +285,11 @@ fun OrderSummaryScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    cartItems.forEachIndexed { idx, item ->
+                    val shownItems = summary?.items.orEmpty()
+                    if (loading && summary == null) {
+                        Text("Calculating shipping charges and delivery estimate...", fontSize = 12.sp, color = TextSecondary)
+                    }
+                    shownItems.forEachIndexed { idx, item ->
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
@@ -248,8 +301,8 @@ fun OrderSummaryScreen(
                                     .background(Color(0xFFF1F5F9))
                             ) {
                                 AsyncImage(
-                                    model = item.product.imageUrl,
-                                    contentDescription = item.product.title,
+                                    model = item.productImage,
+                                    contentDescription = item.productName,
                                     modifier = Modifier.fillMaxSize(),
                                     contentScale = ContentScale.Crop
                                 )
@@ -259,7 +312,7 @@ fun OrderSummaryScreen(
 
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = item.product.title,
+                                    text = item.productName,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = TextPrimary,
@@ -267,7 +320,7 @@ fun OrderSummaryScreen(
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
-                                    text = "Qty: ${item.quantity} · ₹${item.unitPrice.toInt()} each",
+                                    text = "Qty: ${item.quantity} · ${fmtInr(item.unitPrice)} each",
                                     fontSize = 11.5.sp,
                                     color = TextSecondary
                                 )
@@ -276,111 +329,48 @@ fun OrderSummaryScreen(
                             Spacer(modifier = Modifier.width(8.dp))
 
                             Text(
-                                text = "₹${item.totalPrice.toInt()}",
+                                text = "₹${java.text.DecimalFormat("#,##0.##").format(item.unitPrice * item.quantity)}",
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF0F1111)
                             )
                         }
 
-                        if (idx < cartItems.size - 1) {
+                        if (idx < shownItems.size - 1) {
                             Divider(modifier = Modifier.padding(vertical = 10.dp), color = Color(0xFFF1F5F9))
                         }
                     }
                 }
             }
 
-            // Shipping Tier Selection
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                shape = RoundedCornerShape(12.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.LocalShipping,
-                            contentDescription = null,
-                            tint = BzeadPrimary,
-                            modifier = Modifier.size(20.dp)
-                        )
+            summary?.estimatedDeliveryDate?.let { eta ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    shape = RoundedCornerShape(12.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                ) {
+                    Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.LocalShipping, null, tint = BzeadPrimary, modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Delivery Speed & Carrier",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = TextPrimary
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .border(1.dp, if (!isExpressShipping) BzeadPrimary else Color(0xFFE2E8F0), RoundedCornerShape(8.dp))
-                            .background(if (!isExpressShipping) Color(0xFFEFF6FF) else Color.White)
-                            .clickable { isExpressShipping = false }
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        RadioButton(
-                            selected = !isExpressShipping,
-                            onClick = { isExpressShipping = false },
-                            colors = RadioButtonDefaults.colors(selectedColor = BzeadPrimary)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(text = "Standard Shipping (Shiprocket)", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = TextPrimary)
-                            Text(text = "Est. 2-4 business days across India", fontSize = 11.sp, color = TextSecondary)
+                        Column {
+                            Text("Estimated Delivery", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                            Text(eta, fontSize = 12.sp, color = TextSecondary)
                         }
-                        Text(
-                            text = if (baseShipping == 0.0) "FREE" else "₹40",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
-                            color = if (baseShipping == 0.0) BzeadSuccess else TextPrimary
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .border(1.dp, if (isExpressShipping) BzeadPrimary else Color(0xFFE2E8F0), RoundedCornerShape(8.dp))
-                            .background(if (isExpressShipping) Color(0xFFEFF6FF) else Color.White)
-                            .clickable { isExpressShipping = true }
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        RadioButton(
-                            selected = isExpressShipping,
-                            onClick = { isExpressShipping = true },
-                            colors = RadioButtonDefaults.colors(selectedColor = BzeadPrimary)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(text = "Express Air Priority (Delhivery)", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = TextPrimary)
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("FASTEST", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color(0xFFC2410C), modifier = Modifier.background(Color(0xFFFFEDD5), RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 1.dp))
-                            }
-                            Text(text = "Priority Air dispatch, 1-2 business days", fontSize = 11.sp, color = TextSecondary)
-                        }
-                        Text(
-                            text = "+₹99",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
-                            color = TextPrimary
-                        )
                     }
                 }
             }
 
-
+            if (summary != null && summary.missingWeightNames.isNotEmpty()) {
+                Text(
+                    "Missing package weight for: ${summary.missingWeightNames.joinToString(", ")}. Shipping cost may be inaccurate.",
+                    fontSize = 12.sp, color = Color(0xFFB45309)
+                )
+            }
+            if (summary != null && !summary.serviceable) {
+                Text(com.bzead.india.data.CheckoutApi.PINCODE_NOT_SERVICEABLE, fontSize = 12.sp, color = Color(0xFFB91C1C))
+            }
+            loadError?.let { Text(it, fontSize = 12.sp, color = Color(0xFFB91C1C)) }
 
             // Price Details Breakdown
             Card(
@@ -397,14 +387,13 @@ fun OrderSummaryScreen(
                         color = TextPrimary
                     )
                     Spacer(modifier = Modifier.height(10.dp))
-                    PriceSummaryRow(label = "Items Subtotal", value = "₹${subtotal.toInt()}")
+                    PriceSummaryRow(label = "Items Subtotal", value = fmtInr(subtotal))
                     PriceSummaryRow(
                         label = "Shipping Charges",
-                        value = if (shippingFee == 0.0) "FREE" else "₹${shippingFee.toInt()}",
-                        isFree = shippingFee == 0.0
+                        value = if (summary == null) "—" else fmtInr(shippingFee)
                     )
                     if (discount > 0.0) {
-                        PriceSummaryRow(label = "Festive Offer Discount", value = "-₹${discount.toInt()}", isDiscount = true)
+                        PriceSummaryRow(label = "Offer Discount", value = "-${fmtInr(discount)}", isDiscount = true)
                     }
 
                     Divider(modifier = Modifier.padding(vertical = 10.dp), color = Color(0xFFE2E8F0))
@@ -421,7 +410,7 @@ fun OrderSummaryScreen(
                             color = TextPrimary
                         )
                         Text(
-                            text = "₹${grandTotal.toInt()}",
+                            text = if (summary == null) "—" else fmtInr(grandTotal),
                             fontWeight = FontWeight.ExtraBold,
                             fontSize = 20.sp,
                             color = Color(0xFFB12704)
@@ -438,8 +427,12 @@ fun OrderSummaryScreen(
             shadowElevation = 8.dp
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
+                actionError?.let {
+                    Text(it, fontSize = 12.sp, color = Color(0xFFB91C1C), modifier = Modifier.padding(bottom = 8.dp))
+                }
                 Button(
-                    onClick = onProceedToPayment,
+                    onClick = { proceed() },
+                    enabled = !proceeding,
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFD814)),
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier
@@ -448,7 +441,7 @@ fun OrderSummaryScreen(
                         .testTag("proceed_to_payment_btn")
                 ) {
                     Text(
-                        text = "Proceed to Payment (₹${grandTotal.toInt()}) →",
+                        text = if (proceeding) "Checking availability..." else "Proceed to Payment (${fmtInr(grandTotal)}) →",
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF0F1111),
                         fontSize = 15.sp
@@ -458,3 +451,5 @@ fun OrderSummaryScreen(
         }
     }
 }
+
+private fun fmtInr(v: Double): String = "₹" + java.text.DecimalFormat("#,##0.##").format(v)

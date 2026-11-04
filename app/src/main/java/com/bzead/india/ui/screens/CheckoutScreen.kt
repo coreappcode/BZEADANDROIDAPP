@@ -56,8 +56,8 @@ import com.bzead.india.theme.BzeadHeaderNavy
 import com.bzead.india.theme.BzeadPrimary
 import com.bzead.india.theme.TextPrimary
 import com.bzead.india.theme.TextSecondary
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import com.bzead.india.data.CheckoutState
+import androidx.compose.runtime.LaunchedEffect
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -79,14 +79,35 @@ fun CheckoutScreen(
     var billingState by remember { mutableStateOf("") }
     var billingPinCode by remember { mutableStateOf("") }
 
-    var isLoading by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-    val scope = rememberCoroutineScope()
+    remember { BzeadRepository.resetCheckoutState(); true }
+    val checkoutState by BzeadRepository.checkoutState.collectAsState()
+    val activity = androidx.compose.ui.platform.LocalContext.current as? android.app.Activity
 
-    val subtotal = cartItems.sumOf { it.totalPrice }
-    val shippingFee = if (subtotal >= 499.0) 0.0 else 40.0
-    val discount = if (subtotal >= 2000.0) 150.0 else 0.0
-    val grandTotal = (subtotal + shippingFee - discount).coerceAtLeast(0.0)
+    var prepared by remember { mutableStateOf<BzeadRepository.PreparedPayment?>(null) }
+    var preparing by remember { mutableStateOf(true) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) {
+        try {
+            prepared = BzeadRepository.prepareRazorpayPayment()
+        } catch (e: Exception) {
+            errorMessage = e.message?.takeIf { it.isNotBlank() }
+                ?: "Unable to load backend checkout configuration. Please return to review and try again."
+        } finally {
+            preparing = false
+        }
+    }
+
+    LaunchedEffect(checkoutState) {
+        when (val st = checkoutState) {
+            is CheckoutState.Success -> onOrderPlaced(st.orderId)
+            is CheckoutState.Failure -> errorMessage = st.message
+            else -> Unit
+        }
+    }
+
+    val isLoading = preparing || checkoutState is CheckoutState.Processing
+    val grandTotal = prepared?.quote?.total ?: 0.0
 
     Column(
         modifier = modifier
@@ -146,7 +167,7 @@ fun CheckoutScreen(
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "₹${grandTotal.toInt()}",
+                            text = if (prepared == null) "—" else "₹" + java.text.DecimalFormat("#,##0.##").format(grandTotal),
                             fontSize = 22.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFFB12704)
@@ -254,24 +275,19 @@ fun CheckoutScreen(
 
                     Button(
                         onClick = {
-                            val shipTo = activeAddress
-                            if (shipTo == null) {
-                                errorMessage = "Please add a delivery address before placing the order."
+                            val ready = prepared
+                            if (ready == null || activity == null) {
+                                errorMessage = "Unable to load backend checkout configuration. Please return to review and try again."
                                 return@Button
                             }
-                            isLoading = true
                             errorMessage = null
-                            scope.launch {
-                                delay(1000)
-                                val order = BzeadRepository.placeOrder(
-                                    paymentMethod = "Online Payment (Stripe / Razorpay)",
-                                    address = shipTo
-                                )
-                                isLoading = false
-                                onOrderPlaced(order.id)
-                            }
+                            BzeadRepository.startRazorpayPayment(
+                                activity,
+                                ready,
+                                BzeadRepository.BillingAddress(sameAsShipping, billingStreet, billingCity, billingState, billingPinCode)
+                            )
                         },
-                        enabled = !isLoading,
+                        enabled = !isLoading && prepared != null,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color(0xFFFFD814),
                             disabledContainerColor = Color(0xFFE2E8F0)
@@ -294,7 +310,7 @@ fun CheckoutScreen(
                             }
                         } else {
                             Text(
-                                text = "PAY NOW — ₹${grandTotal.toInt()}",
+                                text = "PAY NOW — ₹" + java.text.DecimalFormat("#,##0.##").format(grandTotal),
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF0F1111),
                                 fontSize = 15.sp

@@ -149,7 +149,7 @@ fun ContactScreen(
                                 try {
                                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
                                     context.startActivity(intent)
-                                } catch (_: Exception) {}
+                                } catch (ignored: Exception) {}
                             }
                         },
                         modifier = Modifier

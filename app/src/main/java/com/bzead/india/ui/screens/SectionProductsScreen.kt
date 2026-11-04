@@ -37,7 +37,12 @@ fun SectionProductsScreen(
         }
     }
     
-    val allSectionProducts = remember(sectionId) {
+    val sectionMap by BzeadRepository.sectionProducts.collectAsState()
+    val featured by BzeadRepository.featuredProducts.collectAsState()
+    val trending by BzeadRepository.trendingProducts.collectAsState()
+    val hotDeals by BzeadRepository.hotDealsProducts.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(sectionId) { BzeadRepository.loadSection(sectionId) }
+    val allSectionProducts = remember(sectionId, sectionMap, featured, trending, hotDeals) {
         BzeadRepository.getProductsBySection(sectionId)
     }
     

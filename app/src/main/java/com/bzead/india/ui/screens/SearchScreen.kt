@@ -51,6 +51,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bzead.india.data.BzeadRepository
+import com.bzead.india.data.Product
 import com.bzead.india.theme.BzeadPrimary
 import com.bzead.india.theme.TextPrimary
 import com.bzead.india.theme.TextSecondary
@@ -70,12 +71,18 @@ fun SearchScreen(
     val wishlistIds by BzeadRepository.wishlistProductIds.collectAsState()
     val scope = rememberCoroutineScope()
 
-    val searchResults = remember(searchQuery) {
+    var searchResults by remember { mutableStateOf<List<Product>>(emptyList()) }
+    var searchError by remember { mutableStateOf<String?>(null) }
+
+    androidx.compose.runtime.LaunchedEffect(searchQuery) {
+        searchError = null
         if (searchQuery.isBlank()) {
-            emptyList()
-        } else {
-            BzeadRepository.searchProducts(searchQuery)
+            searchResults = emptyList()
+            return@LaunchedEffect
         }
+        kotlinx.coroutines.delay(300)
+        val results = BzeadRepository.searchCatalog(searchQuery)
+        if (results == null) searchError = "Search failed. Please try again." else searchResults = results
     }
 
     Column(
@@ -270,7 +277,7 @@ fun SearchScreen(
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = "No matching products found",
+                            text = searchError ?: "No matching products found",
                             fontWeight = FontWeight.Bold,
                             color = TextPrimary,
                             fontSize = 16.sp

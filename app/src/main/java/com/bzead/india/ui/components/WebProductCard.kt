@@ -119,6 +119,7 @@ fun WebProductCard(
             Spacer(modifier = Modifier.height(10.dp))
 
             // Rating pill
+            if (product.rating > 0f) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
@@ -139,6 +140,7 @@ fun WebProductCard(
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF854D0E)
                 )
+            }
             }
 
             Spacer(modifier = Modifier.height(6.dp))

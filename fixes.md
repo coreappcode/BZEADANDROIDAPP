@@ -38,6 +38,8 @@ Both apps reference the same Supabase project. The primary mismatches are in And
 
 ### Blocker: Android checkout does not persist an order or process payment
 
+**Status: FIXED in code (not compiled or run — no Android SDK here; Razorpay must be tested on a real device).** Ported from the web: live quote (`CheckoutApi.kt`: variant verification, `get_public_product_prices`, offers, Shiprocket rate card / `shiprocket-rate`, 15 margin, minimum order), real shipping replaces the fake ₹40/₹499, express/COD options and ₹150 discount removed. OrderSummary does the weight check, `shiprocket-ops` serviceability, TAT estimate, and the stock re-check with the web's messages. Checkout creates the Razorpay order through `create-razorpay-order`, saves `checkout_payment_snapshots`, opens the Razorpay Android SDK (`com.razorpay:checkout:1.6.41`), verifies with `verify-razorpay-payment` (retries), polls `orders` by `payment_intent_id`, clears the cart, and shows the real order (or a temporary processing order, as on the web). Known gaps: international-origin products and non-INR pricing (web Shippo/currency path) are rejected with a message; Stripe is not implemented (the web India flow uses Razorpay).
+
 **Android evidence:** `app/src/main/java/com/bzead/india/ui/screens/CheckoutScreen.kt` calls `BzeadRepository.placeOrder()`. That method in `app/src/main/java/com/bzead/india/data/BzeadRepository.kt` generates an in-memory order and clears the local cart.
 
 **Web reference:** `src/pages/user/Checkout.tsx` creates orders through the secure `create_order_secure` RPC and has Stripe/Razorpay payment flows.
@@ -45,6 +47,8 @@ Both apps reference the same Supabase project. The primary mismatches are in And
 **Impact:** Android can display order success even though no backend order was created and no payment was completed.
 
 ### High: Android catalog data can diverge from backend data
+
+**Status: FIXED in code (not compiled or run).** `SupabaseClient.kt` was rebuilt to the web queries: hero/ad banners by `banner_type`, paged 3-level categories (home shortcuts = first 16 level-1), sponsored sections with the web fallback, display prices and MRP from `get_public_product_prices` (strike-through only when `markup_mrp > price`), real `rating`/`review_count`, `search_products_catalog` search, category pages by descendant ids, and product detail with `product_variants`. Sample/fabricated data (1.5x MRP, 4.5 rating, trending/deal flags, sample fallbacks) was removed from the catalog path. Not done: the web's full variant-selection pricing UI and the product-page delivery estimator on Android; reviews are a separate item below.
 
 **Android evidence:** `app/src/main/java/com/bzead/india/data/SupabaseClient.kt` fetches at most 100 products and maps only a subset of product fields. It synthesizes fallback MRP, ratings/review counts, and trending flags.
 

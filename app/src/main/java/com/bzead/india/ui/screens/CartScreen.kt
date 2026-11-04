@@ -107,8 +107,6 @@ fun CartScreen(
     val selectedCartItems = cartItems.filter { it.id in selectedItemIds }
     val payableSelectedItems = selectedCartItems.filter { it.product.inStock && it.product.stockCount > 0 }
     val displaySubtotal = payableSelectedItems.sumOf { it.totalPrice }
-    val freeShippingThreshold = 499.0
-    val shippingFee = if (displaySubtotal >= freeShippingThreshold || payableSelectedItems.isEmpty()) 0.0 else 40.0
 
     Box(
         modifier = modifier
@@ -221,11 +219,6 @@ fun CartScreen(
                     contentPadding = PaddingValues(14.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // Free shipping progress banner
-                    item {
-                        FreeShippingBanner(subtotal = displaySubtotal, threshold = freeShippingThreshold)
-                    }
-
                     // Select All Row (matching Web App CartPage.tsx)
                     item {
                         Card(
@@ -342,8 +335,7 @@ fun CartScreen(
 
                                 PriceSummaryRow(
                                     label = "Delivery Fee",
-                                    value = if (shippingFee == 0.0) "FREE" else "₹${shippingFee.toInt()}",
-                                    isFree = shippingFee == 0.0
+                                    value = "Calculated at checkout"
                                 )
 
                                 Divider(modifier = Modifier.padding(vertical = 12.dp), color = Color(0xFFDDD000).copy(alpha = 0.2f))
@@ -370,7 +362,10 @@ fun CartScreen(
                                 Spacer(modifier = Modifier.height(16.dp))
 
                                 Button(
-                                    onClick = onProceedToCheckout,
+                                    onClick = {
+                                        BzeadRepository.setCheckoutSelection(payableSelectedItems.map { it.id }.toSet())
+                                        onProceedToCheckout()
+                                    },
                                     enabled = payableSelectedItems.isNotEmpty(),
                                     colors = ButtonDefaults.buttonColors(
                                         containerColor = Color(0xFFFFD814),
@@ -460,53 +455,6 @@ fun CartScreen(
     }
 }
 
-@Composable
-fun FreeShippingBanner(subtotal: Double, threshold: Double) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFEFF6FF)),
-        shape = RoundedCornerShape(10.dp)
-    ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.LocalShipping,
-                    contentDescription = null,
-                    tint = BzeadPrimary,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                if (subtotal >= threshold) {
-                    Text(
-                        text = "You've unlocked FREE Delivery across India!",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = BzeadSuccess
-                    )
-                } else {
-                    val remaining = (threshold - subtotal).toInt()
-                    Text(
-                        text = "Add ₹$remaining more to get FREE Delivery!",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = BzeadPrimary
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.height(6.dp))
-            val progress = (subtotal / threshold).toFloat().coerceIn(0f, 1f)
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(6.dp)
-                    .clip(RoundedCornerShape(3.dp)),
-                color = if (progress >= 1f) BzeadSuccess else BzeadPrimary,
-                trackColor = Color(0xFFDBEAFE)
-            )
-        }
-    }
-}
 
 @Composable
 fun CartItemRow(
