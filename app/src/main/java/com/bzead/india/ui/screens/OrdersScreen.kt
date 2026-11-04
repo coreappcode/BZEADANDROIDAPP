@@ -291,7 +291,7 @@ fun OrderFilterChip(label: String, isSelected: Boolean, onClick: () -> Unit) {
         modifier = Modifier.clip(RoundedCornerShape(4.dp)).clickable(onClick = onClick),
         color = if (isSelected) Color(0xFF0F172A) else Color.White,
         shape = RoundedCornerShape(4.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, if (isSelected) Color(0xFF0F172A) else Color(0xFFD1D5DB)
+        border = androidx.compose.foundation.BorderStroke(1.dp, if (isSelected) Color(0xFF0F172A) else Color(0xFFD1D5DB))
     ) {
         Text(label, color = if (isSelected) Color.White else Color(0xFF4B5563), fontSize = 11.sp,
             fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))

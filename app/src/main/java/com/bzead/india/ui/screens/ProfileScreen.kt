@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Work
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LocationOn
@@ -554,7 +555,7 @@ private fun ProfileAddressCard(address: DeliveryAddress, onManage: () -> Unit) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 when (address.addressType.lowercase()) {
-                    "work" -> Icons.Default.Business
+                    "work" -> Icons.Default.Work
                     "home" -> Icons.Default.Home
                     else -> Icons.Default.Map
                 },

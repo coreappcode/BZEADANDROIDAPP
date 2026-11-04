@@ -63,7 +63,6 @@ internal object OrderInvoicePdf {
             canvas.drawText("₹${item.unitPrice.toLong()}", 380f, y - if (variant.isNotBlank()) 13f else 0f, regular)
             canvas.drawText("₹${item.totalPrice.toLong()}", 485f, y - if (variant.isNotBlank()) 13f else 0f, regular)
             y += 22f
-            if (y > 740f) break
         }
         y = minOf(y + 4f, 755f)
         canvas.drawLine(40f, y, 555f, y, line)

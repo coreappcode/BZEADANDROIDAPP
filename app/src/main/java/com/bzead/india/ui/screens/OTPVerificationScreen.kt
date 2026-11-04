@@ -76,7 +76,7 @@ fun OTPVerificationScreen(
     var success by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var noticeMessage by remember(purpose) {
-        mutableStateOf(
+        mutableStateOf<String?>(
             if (purpose == "password-reset") "Reset OTP sent. Please check inbox, spam, and promotions tabs."
             else "OTP sent successfully. Please check your inbox and spam folder."
         )

@@ -237,7 +237,7 @@ object BzeadRepository {
             publishSearchHistory(emptyList())
             return
         }
-        publishSearchHistory(r.rows.map { row ->
+        publishSearchHistory((0 until r.rows.length()).map { r.rows.getJSONObject(it) }.map { row ->
             SearchHistoryEntry(
                 id = row.optString("id"),
                 typedInput = row.optString("typed_input"),
@@ -263,11 +263,11 @@ object BzeadRepository {
         authScope.launch {
             val token = validToken() ?: SupabaseClient.ANON_KEY
             val ids = listOf(product.categoryId, product.subCategoryId, product.productTypeId).filter { it.isNotBlank() }
-            val categoryNames = if (ids.isEmpty()) emptyMap() else {
+            val categoryNames: Map<String, String> = if (ids.isEmpty()) emptyMap() else {
                 val result = SupabaseRest.request(
                     "GET", "categories?select=id,name&id=in.${SupabaseRest.enc(SupabaseRest.inList(ids.distinct()))}", token
                 )
-                if (result.ok) result.rows.associate { it.optString("id") to it.optString("name") } else emptyMap()
+                if (result.ok) (0 until result.rows.length()).map { result.rows.getJSONObject(it) }.associate { it.optString("id") to it.optString("name") } else emptyMap()
             }
             saveSearchEntry(SearchHistoryEntry(
                 id = "",
