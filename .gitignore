@@ -16,3 +16,8 @@
 local.properties
 .env
 debug.keystore
+
+# Release signing secrets
+*.jks
+*.keystore
+bzead-india-upload-key-password.txt
