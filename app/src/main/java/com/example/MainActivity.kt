@@ -119,13 +119,16 @@ class MainActivity : ComponentActivity(), com.razorpay.PaymentResultWithDataList
                 val snackbarHostState = remember { SnackbarHostState() }
                 val cartItems by BzeadRepository.cartItems.collectAsState()
                 val cartCount = cartItems.sumOf { it.quantity }
+                val isLoggedIn by BzeadRepository.isLoggedIn.collectAsState()
 
                 val currentBottomTab = when (currentScreen) {
                     AppScreen.Home -> BottomTab.HOME
+                    AppScreen.Orders -> BottomTab.ORDERS
                     AppScreen.Category -> BottomTab.CATEGORY
                     is AppScreen.CategoryDetail -> BottomTab.CATEGORY
                     AppScreen.Cart -> BottomTab.CART
                     AppScreen.Profile -> BottomTab.ACCOUNT
+                    AppScreen.Login -> BottomTab.ACCOUNT
                     else -> null
                 }
 
@@ -182,11 +185,13 @@ class MainActivity : ComponentActivity(), com.razorpay.PaymentResultWithDataList
                                 onTabSelected = { tab ->
                                     currentScreen = when (tab) {
                                         BottomTab.HOME -> AppScreen.Home
+                                        BottomTab.ORDERS -> AppScreen.Orders
                                         BottomTab.CATEGORY -> AppScreen.Category
-                                        BottomTab.CART -> AppScreen.Cart
-                                        BottomTab.ACCOUNT -> AppScreen.Profile
+                                        BottomTab.CART -> if (isLoggedIn) AppScreen.Cart else AppScreen.Login
+                                        BottomTab.ACCOUNT -> if (isLoggedIn) AppScreen.Profile else AppScreen.Login
                                     }
                                 },
+                                isLoggedIn = isLoggedIn,
                                 cartCount = cartCount
                             )
                         }
@@ -222,6 +227,8 @@ class MainActivity : ComponentActivity(), com.razorpay.PaymentResultWithDataList
                                         onNavigateToCart = { currentScreen = AppScreen.Cart },
                                         onNavigateToWishlist = { currentScreen = AppScreen.Wishlist },
                                         onNavigateToAccount = { currentScreen = AppScreen.Profile },
+                                        onNavigateToOrders = { currentScreen = AppScreen.Orders },
+                                        onNavigateToContact = { currentScreen = AppScreen.Contact },
                                         onNavigateToLogin = { currentScreen = AppScreen.Login },
                                         onNavigateToSignup = { currentScreen = AppScreen.Signup },
                                         snackbarHostState = snackbarHostState
@@ -298,6 +305,9 @@ class MainActivity : ComponentActivity(), com.razorpay.PaymentResultWithDataList
                                         onNavigateToWriteReview = { id -> currentScreen = AppScreen.WriteReview(id) },
                                         onNavigateToLogin = { currentScreen = AppScreen.Login },
                                         onNavigateToAddresses = { currentScreen = AppScreen.AddressManagement },
+                                        onNavigateHome = { currentScreen = AppScreen.Home },
+                                        onNavigateToCategory = { id -> currentScreen = AppScreen.CategoryDetail(id) },
+                                        onNavigateToProduct = { id -> currentScreen = AppScreen.ProductDetail(id) },
                                         snackbarHostState = snackbarHostState
                                     )
                                 }
@@ -310,7 +320,8 @@ class MainActivity : ComponentActivity(), com.razorpay.PaymentResultWithDataList
                                     WriteReviewScreen(
                                         productId = screen.productId,
                                         onNavigateBack = { currentScreen = AppScreen.ProductDetail(screen.productId) },
-                                        onReviewSubmitted = { currentScreen = AppScreen.ProductDetail(screen.productId) }
+                                        onReviewSubmitted = { currentScreen = AppScreen.ProductDetail(screen.productId) },
+                                        onGoHome = { currentScreen = AppScreen.Home }
                                     )
                                 }
                                 is AppScreen.Settings -> {
@@ -322,7 +333,8 @@ class MainActivity : ComponentActivity(), com.razorpay.PaymentResultWithDataList
                                     SectionProductsScreen(
                                         sectionId = screen.sectionId,
                                         onNavigateBack = { currentScreen = AppScreen.Home },
-                                        onProductClick = { id -> currentScreen = AppScreen.ProductDetail(id) }
+                                        onProductClick = { id -> currentScreen = AppScreen.ProductDetail(id) },
+                                        onNavigateToLogin = { currentScreen = AppScreen.Login }
                                     )
                                 }
                                 is AppScreen.Contact -> {

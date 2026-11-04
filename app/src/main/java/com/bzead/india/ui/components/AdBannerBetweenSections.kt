@@ -2,75 +2,81 @@ package com.bzead.india.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.bzead.india.data.AdBanner
+import kotlinx.coroutines.delay
 
+/** Web ad slot: banners of one ad_slot rotate every 7 s with amber dots; image max height 150, object-cover. */
 @Composable
 fun AdBannerBetweenSections(
-    banner: AdBanner?,
-    onBannerClick: () -> Unit
+    banners: List<AdBanner>,
+    onOpenLink: (String) -> Unit
 ) {
-    if (banner == null) return
+    if (banners.isEmpty()) return
+    var index by remember(banners) { mutableIntStateOf(0) }
+    LaunchedEffect(banners) {
+        if (banners.size > 1) {
+            while (true) {
+                delay(7000)
+                index = (index + 1) % banners.size
+            }
+        }
+    }
+    val banner = banners[index.coerceIn(0, banners.size - 1)]
 
-    Card(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 10.dp)
-            .clickable { onBannerClick() }
-            .testTag("ad_banner_interleaved"),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            .padding(horizontal = 16.dp, vertical = 24.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { banner.link?.takeIf { it.isNotBlank() }?.let(onOpenLink) }
+            .testTag("ad_banner_interleaved")
     ) {
-        Box(
+        AsyncImage(
+            model = banner.imageUrl,
+            contentDescription = banner.title,
+            contentScale = ContentScale.Crop,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(110.dp)
-                .clip(RoundedCornerShape(14.dp))
-                .background(Color(0xFF0F172A))
-        ) {
-            AsyncImage(
-                model = banner.imageUrl,
-                contentDescription = banner.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-
-            // Sponsored tag overlay
-            Box(
+                .heightIn(max = 150.dp)
+        )
+        if (banners.size > 1) {
+            Row(
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(8.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color.Black.copy(alpha = 0.6f))
-                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Text(
-                    text = "ADVERTISEMENT",
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    letterSpacing = 0.5.sp
-                )
+                banners.indices.forEach { i ->
+                    Box(
+                        modifier = Modifier
+                            .size(width = if (i == index) 16.dp else 6.dp, height = 6.dp)
+                            .clip(CircleShape)
+                            .background(if (i == index) Color(0xFFF59E0B) else Color(0xFFD1D5DB))
+                    )
+                }
             }
         }
     }

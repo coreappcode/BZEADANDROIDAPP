@@ -42,6 +42,14 @@ object SupabaseClient {
         )
     }
 
+    /** Web resolveProductImageUrl: blob URLs are dropped, storage paths become `product-images` public URLs. */
+    fun resolveProductImageUrl(value: String?): String {
+        val t = value?.trim().orEmpty()
+        if (t.isEmpty() || t.startsWith("blob:")) return ""
+        if (t.startsWith("http://") || t.startsWith("https://")) return t
+        return "$HOST_URL/storage/v1/object/public/product-images/$t"
+    }
+
     /** Web `parseProduct` equivalent: maps a `products` row (plus optional `product_variants`) to the Android model. */
     private fun offerTitle(type: String): String = when (type) {
         "buy_x_get_y" -> "Buy X Get Y"
@@ -84,7 +92,10 @@ object SupabaseClient {
 
     fun parseProduct(o: JSONObject, index: Int = 0): Product {
         val images = o.optJSONArray("images")
-        val primary = o.text("image_url").ifEmpty { images?.optString(0).orEmpty() }
+        // Web resolveProductDisplayImage: image_url first, then the first usable entry of images.
+        val primary = resolveProductImageUrl(o.text("image_url")).ifEmpty {
+            (0 until (images?.length() ?: 0)).map { resolveProductImageUrl(images!!.optString(it)) }.firstOrNull { it.isNotEmpty() }.orEmpty()
+        }
         val price = if (o.isNull("price")) 0.0 else o.optDouble("price", 0.0)
         val stock = if (o.isNull("stock")) 0 else o.optInt("stock", 0)
         val category = o.text("category")
@@ -128,6 +139,8 @@ object SupabaseClient {
             originCountry = o.text("origin_country"),
             shipsInternationally = o.optBoolean("ships_internationally", false),
             images = images?.let { a -> (0 until a.length()).map { a.optString(it) }.filter { it.isNotBlank() } }.orEmpty(),
+            itemCondition = o.text("item_condition").ifEmpty { null },
+            hasVariants = o.optBoolean("has_variants", false),
             offerSummary = firstActiveOfferSummary(o.optJSONArray("offer_rules")),
             specifications = emptyMap()
         )
@@ -162,7 +175,6 @@ object SupabaseClient {
         val prices = fetchPublicPrices(products.map { it.id })
         return products.map { p ->
             val (selling, markup) = prices[p.id] ?: return@map p
-            if (selling <= 0.0) return@map p
             val strike = if (markup > selling) markup else selling
             p.copy(
                 price = selling,
@@ -177,11 +189,25 @@ object SupabaseClient {
         val r = SupabaseRest.request(
             "GET", "products?select=$PRODUCT_FIELDS&approval_status=eq.approved&is_active=eq.true$extra&limit=$limit", ANON_KEY
         )
-        return if (r.ok) r.rows.objects() else null
+        if (!r.ok) return null
+        val rows = r.rows.objects()
+        attachHasVariants(rows)
+        return rows
+    }
+
+    /** Web `attachHasVariants`: one product_variants query; a failed query leaves every product without variants. */
+    private suspend fun attachHasVariants(rows: List<JSONObject>) {
+        val ids = rows.map { it.text("id") }.filter { it.isNotEmpty() }
+        if (ids.isEmpty()) return
+        val r = SupabaseRest.request(
+            "GET", "product_variants?select=product_id&product_id=in.${SupabaseRest.enc(SupabaseRest.inList(ids))}", ANON_KEY
+        )
+        val withVariants = if (r.ok) r.rows.objects().map { it.text("product_id") }.toSet() else emptySet()
+        rows.forEach { it.put("has_variants", withVariants.contains(it.text("id"))) }
     }
 
     /** Web `getActiveSponsoredProductsBySection`. Null when the request fails. */
-    private suspend fun fetchSponsored(limitPerSection: Int): Map<String, List<Product>>? {
+    private suspend fun fetchSponsored(limitPerSection: Int): Map<String, List<Product>> {
         val now = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US)
             .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.format(java.util.Date())
         val r = SupabaseRest.request(
@@ -191,9 +217,9 @@ object SupabaseClient {
                 "&order=created_at.desc&limit=200",
             ANON_KEY
         )
-        if (!r.ok) return null
         val out = mutableMapOf("featured" to mutableListOf<Product>(), "trending" to mutableListOf(), "hot-deals" to mutableListOf())
-        r.rows.objects().forEachIndexed { i, row ->
+        // The web ignores the query error and treats it as no sponsored data.
+        (if (r.ok) r.rows.objects() else emptyList()).forEachIndexed { i, row ->
             val list = out[row.text("section")] ?: return@forEachIndexed
             val product = row.optJSONObject("products") ?: return@forEachIndexed
             if (list.size < limitPerSection) list.add(parseProduct(product, i))
@@ -226,17 +252,16 @@ object SupabaseClient {
      * Returns null if the backend request failed so callers keep any existing data.
      */
     suspend fun fetchSection(section: String, limit: Int): List<Product>? = withContext(Dispatchers.IO) {
-        val sponsored = fetchSponsored(limit) ?: return@withContext null
-        val chosen = sponsored[section].orEmpty().ifEmpty {
-            val noSponsoredData = sponsored.values.all { it.isEmpty() }
-            if (!noSponsoredData) emptyList() else (fetchSectionFallback(section, limit) ?: return@withContext null)
-        }
+        val sponsored = fetchSponsored(limit)[section].orEmpty()
+        val chosen = sponsored.ifEmpty { fetchSectionFallback(section, limit).orEmpty() }
         withPublicPrices(chosen)
     }
 
-    /** Home page sections. Null when any request fails. */
-    suspend fun fetchHomeSections(): Map<String, List<Product>>? = withContext(Dispatchers.IO) {
-        val sponsored = fetchSponsored(100) ?: return@withContext null
+    class HomeSections(val featured: List<Product>, val deals: List<Product>, val trending: List<Product>, val hasSponsored: Boolean)
+
+    /** Web `BzeadHomePage.refreshSections`. Null when a fallback query fails (the web throws and keeps the old data). */
+    suspend fun fetchHomeSections(): HomeSections? = withContext(Dispatchers.IO) {
+        val sponsored = fetchSponsored(100)
         val noSponsoredData = sponsored.values.all { it.isEmpty() }
         val result = if (noSponsoredData) {
             val f = fetchSectionFallback("featured", 100)
@@ -245,9 +270,9 @@ object SupabaseClient {
             if (f == null || d == null || t == null) return@withContext null
             mapOf("featured" to f, "hot-deals" to d, "trending" to t)
         } else sponsored
-        val all = result.values.flatten()
-        val priced = withPublicPrices(all).associateBy { it.id }
-        result.mapValues { (_, list) -> list.map { priced[it.id] ?: it } }
+        val priced = withPublicPrices(result.values.flatten()).associateBy { it.id }
+        fun section(key: String) = result[key].orEmpty().map { priced[it.id] ?: it }
+        HomeSections(section("featured"), section("hot-deals"), section("trending"), !noSponsoredData)
     }
 
     /** Search through the `search_products_catalog` RPC, then hydrates the approved products (web `searchPublicProductsByKeywords`). */

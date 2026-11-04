@@ -393,6 +393,15 @@ internal object UserDataApi {
         return Pair(rows.size, visible)
     }
 
+    /** Web `getBuyerUnreadCount`: unread notifications excluding seller-only types. */
+    suspend fun fetchBuyerUnreadCount(token: String, userId: String): Int? {
+        val types = SELLER_ONLY_TYPES.joinToString(",") { "\"$it\"" }
+        val res = SupabaseRest.request(
+            "GET", "notifications?select=id&user_id=eq.$userId&is_read=eq.false&type=not.in.(${SupabaseRest.enc(types)})", token
+        )
+        return if (res.ok) res.rows.length() else null
+    }
+
     suspend fun markNotificationRead(token: String, userId: String, id: String): RestResult =
         SupabaseRest.request(
             "PATCH", "notifications?id=eq.$id&user_id=eq.$userId", token,

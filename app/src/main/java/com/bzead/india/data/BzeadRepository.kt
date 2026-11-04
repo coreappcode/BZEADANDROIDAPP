@@ -212,6 +212,9 @@ object BzeadRepository {
         }
     }
 
+    private val _hasSponsored = MutableStateFlow(false)
+    val hasSponsored: StateFlow<Boolean> = _hasSponsored.asStateFlow()
+
     suspend fun refreshHomeContent() {
         _isHomeLoading.value = true
         try {
@@ -228,9 +231,10 @@ object BzeadRepository {
             }
 
             SupabaseClient.fetchHomeSections()?.let { sections ->
-                _featuredProducts.value = sections["featured"].orEmpty()
-                _trendingProducts.value = sections["trending"].orEmpty()
-                _hotDealsProducts.value = sections["hot-deals"].orEmpty()
+                _featuredProducts.value = sections.featured
+                _trendingProducts.value = sections.trending
+                _hotDealsProducts.value = sections.deals
+                _hasSponsored.value = sections.hasSponsored
                 val seen = LinkedHashMap<String, Product>()
                 (_featuredProducts.value + _trendingProducts.value + _hotDealsProducts.value).forEach { seen.putIfAbsent(it.id, it) }
                 _allProducts.value = (seen.values + _allProducts.value.filterNot { seen.containsKey(it.id) }).toList()
@@ -331,15 +335,15 @@ object BzeadRepository {
     }
 
     /** Web PDP `addToCart(product, 1, { selectedSize, selectedColor, selectedVariantId, selectedVariantSku, variantPrice })`. */
-    fun addToCart(product: Product, size: String?, color: String?, variantId: String?, sku: String?, variantPrice: Double?) {
+    fun addToCart(product: Product, size: String?, color: String?, variantId: String?, sku: String?, variantPrice: Double?, quantity: Int = 1) {
         val key = UserDataApi.cartItemId(product.id, size, color, sku)
         val list = _cartItems.value.toMutableList()
         val idx = list.indexOfFirst { it.id == key }
         val item = if (idx >= 0) {
-            list[idx].let { it.copy(quantity = it.quantity + 1, variantPrice = variantPrice ?: it.variantPrice) }.also { list[idx] = it }
+            list[idx].let { it.copy(quantity = it.quantity + quantity, variantPrice = variantPrice ?: it.variantPrice) }.also { list[idx] = it }
         } else {
             CartItem(
-                id = key, product = product, quantity = 1, selectedSize = size, selectedColor = color,
+                id = key, product = product, quantity = quantity, selectedSize = size, selectedColor = color,
                 selectedVariantId = variantId, selectedVariantSku = sku, variantPrice = variantPrice
             ).also { list.add(it) }
         }
@@ -372,6 +376,11 @@ object BzeadRepository {
         persist { t, uid -> UserDataApi.clearCart(t, uid).error }
     }
 
+    private fun saveWishlistLocally() {
+        appContext?.getSharedPreferences("bzead_wishlist", android.content.Context.MODE_PRIVATE)
+            ?.edit()?.putString("ids", org.json.JSONArray(_wishlistProductIds.value.toList()).toString())?.apply()
+    }
+
     fun toggleWishlist(productId: String) {
         val adding = !_wishlistProductIds.value.contains(productId)
         if (adding) {
@@ -382,6 +391,7 @@ object BzeadRepository {
             _wishlistProductIds.value = _wishlistProductIds.value - productId
             _wishlistProducts.value = _wishlistProducts.value.filterNot { it.id == productId }
         }
+        saveWishlistLocally()
         if (!UserDataApi.isUuid(productId)) return
         persist { t, uid ->
             val res = if (adding) UserDataApi.addWishlist(t, uid, listOf(productId)) else UserDataApi.removeWishlist(t, uid, productId)
@@ -405,6 +415,7 @@ object BzeadRepository {
         if (session?.userId != uid) return
         _wishlistProducts.value = remote + localProducts
         _wishlistProductIds.value = remoteIds + missing
+        saveWishlistLocally()
     }
 
     fun isInCart(productId: String): Boolean {
@@ -415,12 +426,17 @@ object BzeadRepository {
         return _allProducts.value.firstOrNull { it.id == id }
     }
 
+    private val _unreadCount = MutableStateFlow(0)
+    val unreadCount: StateFlow<Int> = _unreadCount.asStateFlow()
+
     fun markAllNotificationsRead() {
+        _unreadCount.value = 0
         _notifications.value = _notifications.value.map { it.copy(isRead = true) }
         persist { t, uid -> UserDataApi.markAllNotificationsRead(t, uid).error }
     }
 
     fun markNotificationAsRead(id: String) {
+        if (_notifications.value.any { it.id == id && !it.isRead }) _unreadCount.value = maxOf(0, _unreadCount.value - 1)
         _notifications.value = _notifications.value.map { if (it.id == id) it.copy(isRead = true) else it }
         persist { t, uid -> UserDataApi.markNotificationRead(t, uid, id).error }
     }
@@ -432,6 +448,7 @@ object BzeadRepository {
         _notifications.value = visible
         notificationOffset = fetched
         _hasMoreNotifications.value = fetched >= UserDataApi.NOTIFICATION_PAGE_SIZE
+        UserDataApi.fetchBuyerUnreadCount(token, uid)?.let { _unreadCount.value = it }
     }
 
     fun loadMoreNotifications() {
@@ -871,6 +888,15 @@ object BzeadRepository {
         appContext = context.applicationContext
         val store = SessionStore(context.applicationContext)
         sessionStore = store
+        // Web `beauzead_wishlist` local storage: the wishlist survives restarts.
+        val savedWishlist = appContext?.getSharedPreferences("bzead_wishlist", android.content.Context.MODE_PRIVATE)
+            ?.getString("ids", null)
+        if (savedWishlist != null) {
+            try {
+                val arr = org.json.JSONArray(savedWishlist)
+                _wishlistProductIds.value = (0 until arr.length()).map { arr.getString(it) }.toSet()
+            } catch (_: Exception) { }
+        }
         val refreshToken = store.loadRefreshToken() ?: return
         authScope.launch {
             val res = SupabaseAuth.refresh(refreshToken)
@@ -896,10 +922,12 @@ object BzeadRepository {
         _cartItems.value = emptyList()
         _wishlistProductIds.value = emptySet()
         _wishlistProducts.value = emptyList()
+        saveWishlistLocally()
         _addresses.value = emptyList()
         selectedAddress.value = null
         _orders.value = emptyList()
         _notifications.value = emptyList()
+        _unreadCount.value = 0
         _hasMoreNotifications.value = false
         notificationOffset = 0
     }

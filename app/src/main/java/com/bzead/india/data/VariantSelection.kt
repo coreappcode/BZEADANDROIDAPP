@@ -122,4 +122,27 @@ object VariantSelection {
         val all = (variantImages + product.images).distinct()
         return all.ifEmpty { listOf(product.imageUrl).filter { it.isNotBlank() } }
     }
+
+    /** Web `buildVariantSelectionState().defaultVariant`. */
+    fun defaultVariant(variants: List<ProductVariant>, current: ProductVariant?): ProductVariant? =
+        current ?: variants.firstOrNull { !it.sku.isNullOrBlank() } ?: variants.firstOrNull()
+
+    /** Web `shouldOpenSelector`: more than one distinct size/colour choice. */
+    fun shouldOpenSelector(variants: List<ProductVariant>): Boolean {
+        if (variants.isEmpty()) return false
+        val keys = variants.map { v ->
+            sizeOf(v).lowercase() + "::" + parseColorTokens(v.color).map { it.lowercase() }.sorted().joinToString("|")
+        }.toSet()
+        return availableSizes(variants).size > 1 || availableColors(variants).size > 1 || keys.size > 1
+    }
+
+    /** Web `resolveDirectCartVariantChoice`: the preferred size/colour and its variant. */
+    fun directChoice(variants: List<ProductVariant>): Triple<String?, String?, ProductVariant?> {
+        val sizes = availableSizes(variants)
+        val colors = availableColors(variants)
+        val size = if (sizes.isNotEmpty()) preferredSize(variants, sizes).ifEmpty { null } else null
+        val color = if (colors.isNotEmpty()) preferredColor(variants, colors).ifEmpty { null } else null
+        val current = currentVariant(variants, size.orEmpty(), color.orEmpty(), sizes.size > 1, colors.size > 1)
+        return Triple(size, color, defaultVariant(variants, current))
+    }
 }

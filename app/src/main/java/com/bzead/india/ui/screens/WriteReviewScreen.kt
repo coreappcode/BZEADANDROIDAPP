@@ -10,6 +10,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.Upload
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -21,6 +25,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.withStyle
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -40,13 +45,21 @@ import kotlinx.coroutines.launch
 fun WriteReviewScreen(
     productId: String,
     onNavigateBack: () -> Unit,
-    onReviewSubmitted: () -> Unit
+    onReviewSubmitted: () -> Unit,
+    onGoHome: () -> Unit = onNavigateBack
 ) {
     val catalog by BzeadRepository.allProducts.collectAsState()
     LaunchedEffect(productId) { BzeadRepository.loadProductDetail(productId) }
     val product = remember(productId, catalog) { BzeadRepository.getProductById(productId) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    var loadAttempted by remember(productId) { mutableStateOf(false) }
+    LaunchedEffect(productId) { loadAttempted = true }
+    var publicPrice by remember(productId) { mutableStateOf<Double?>(null) }
+    LaunchedEffect(product?.id) {
+        val id = product?.id ?: return@LaunchedEffect
+        com.bzead.india.data.SupabaseClient.fetchVariantPublicPrice(id, null)?.let { if (it.first > 0) publicPrice = it.first }
+    }
 
     var rating by remember { mutableIntStateOf(0) }
     var title by remember { mutableStateOf("") }
@@ -87,190 +100,219 @@ fun WriteReviewScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Write a Review", fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFF0F172A),
-                    titleContentColor = Color.White,
-                    navigationIconContentColor = Color.White
-                )
-            )
-        }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .background(Color(0xFFF8FAFC))
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            if (product != null) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                ) {
-                    Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        AsyncImage(
-                            model = product.imageUrl,
-                            contentDescription = product.title,
-                            modifier = Modifier.size(64.dp).clip(RoundedCornerShape(8.dp)),
-                            contentScale = ContentScale.Crop
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(product.title, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color(0xFF0F172A), maxLines = 2)
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text("₹${product.price.toInt()}", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Color(0xFF166534))
-                        }
-                    }
-                }
-            }
+    val Gray300 = Color(0xFFD1D5DB)
+    val Gray900 = Color(0xFF111827)
+    val fieldColors = OutlinedTextFieldDefaults.colors(
+        focusedBorderColor = Color(0xFF6D28D9), unfocusedBorderColor = Gray300,
+        focusedTextColor = Gray900, unfocusedTextColor = Gray900
+    )
 
-            submitError?.let {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(8.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFEE2E2))
-                ) {
-                    Text(it, color = Color(0xFFB91C1C), fontSize = 14.sp, modifier = Modifier.padding(14.dp))
-                }
-            }
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    if (product == null) {
+        Column(Modifier.fillMaxSize().background(Color(0xFFF9FAFB)).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+            Column(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Color.White).padding(32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Text("Overall Rating *", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFF0F172A))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        (1..5).forEach { starIndex ->
-                            Icon(
-                                imageVector = if (starIndex <= rating) Icons.Default.Star else Icons.Outlined.Star,
-                                contentDescription = "Rate $starIndex star" + if (starIndex > 1) "s" else "",
-                                tint = if (starIndex <= rating) Color(0xFFF69931) else Color(0xFFD1D5DB),
-                                modifier = Modifier.size(36.dp).clickable { rating = starIndex }
-                            )
-                        }
-                    }
-                    if (rating > 0) {
-                        Text(
-                            text = when (rating) {
-                                1 -> "Poor"
-                                2 -> "Fair"
-                                3 -> "Good"
-                                4 -> "Very Good"
-                                else -> "Excellent"
-                            },
-                            fontSize = 13.sp,
-                            color = Color(0xFF64748B)
+                Icon(Icons.Default.Info, null, tint = Color(0xFFDC2626), modifier = Modifier.size(48.dp))
+                Spacer(Modifier.height(16.dp))
+                Text("Unable to Load Product", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = Gray900)
+                Spacer(Modifier.height(8.dp))
+                Text(if (loadAttempted) "Product not found" else "Loading...", fontSize = 16.sp, color = Color(0xFF4B5563))
+                Spacer(Modifier.height(24.dp))
+                Button(onClick = onGoHome, shape = RoundedCornerShape(8.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))) {
+                    Text("Go to Home", color = Color.White)
+                }
+            }
+        }
+        return
+    }
+
+    val imageUrl = product.imageUrl.ifBlank { product.images.firstOrNull().orEmpty() }
+    val displayPrice = publicPrice ?: product.price
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFFF3F4F6))
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color.White).border(1.dp, Color(0xFFF3F4F6), RoundedCornerShape(12.dp)).padding(16.dp)) {
+            Text("Write a Review", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Gray900)
+            Text("Share your experience with this product", fontSize = 14.sp, color = Color(0xFF6B7280), modifier = Modifier.padding(top = 4.dp))
+        }
+
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color(0xFFF9FAFB)).border(1.dp, Color(0xFFE5E7EB), RoundedCornerShape(12.dp)).padding(16.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            if (imageUrl.isNotBlank()) {
+                AsyncImage(
+                    model = imageUrl, contentDescription = product.title,
+                    modifier = Modifier.size(80.dp).clip(RoundedCornerShape(8.dp)).border(1.dp, Color(0xFFE5E7EB), RoundedCornerShape(8.dp)),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Box(Modifier.size(80.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFFE5E7EB)), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.Inventory2, null, tint = Color(0xFF6B7280), modifier = Modifier.size(32.dp))
+                }
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(product.title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Gray900, maxLines = 3, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                Text(com.bzead.india.ui.components.formatPrice(displayPrice), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Gray900, modifier = Modifier.padding(top = 8.dp))
+            }
+        }
+
+        Column(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color.White).border(1.dp, Color(0xFFF3F4F6), RoundedCornerShape(12.dp)).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
+            submitError?.let {
+                Text(
+                    it, color = Color(0xFFB91C1C), fontSize = 14.sp,
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Color(0xFFFEF2F2)).border(1.dp, Color(0xFFFECACA), RoundedCornerShape(8.dp)).padding(horizontal = 16.dp, vertical = 12.dp)
+                )
+            }
+
+            Column {
+                Text(androidx.compose.ui.text.buildAnnotatedString {
+                    append("Rating ")
+                    withStyle(androidx.compose.ui.text.SpanStyle(color = Color(0xFFEF4444))) { append("*") }
+                }, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Gray900)
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    (1..5).forEach { star ->
+                        Icon(
+                            imageVector = Icons.Default.Star,
+                            contentDescription = "Rate $star star" + if (star > 1) "s" else "",
+                            tint = if (star <= rating) Color(0xFFF69931) else Gray300,
+                            modifier = Modifier.size(36.dp).clickable { rating = star }
                         )
                     }
-
-                    OutlinedTextField(
-                        value = title,
-                        onValueChange = { if (it.length <= 100) title = it },
-                        label = { Text("Review Title *") },
-                        placeholder = { Text("Summarize your review in a few words") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
+                }
+                if (rating > 0) {
+                    Text(
+                        when (rating) { 1 -> "Poor"; 2 -> "Fair"; 3 -> "Good"; 4 -> "Very Good"; else -> "Excellent" },
+                        fontSize = 14.sp, color = Color(0xFF6B7280), modifier = Modifier.padding(top = 8.dp)
                     )
+                }
+            }
 
-                    OutlinedTextField(
-                        value = comment,
-                        onValueChange = { if (it.length <= 5000) comment = it },
-                        label = { Text("Your Review *") },
-                        placeholder = { Text("Share your detailed experience with this product...") },
-                        supportingText = { Text("${comment.length}/5000 characters") },
-                        modifier = Modifier.fillMaxWidth().height(160.dp),
-                        maxLines = 6
-                    )
+            Column {
+                Text(androidx.compose.ui.text.buildAnnotatedString {
+                    append("Review Title ")
+                    withStyle(androidx.compose.ui.text.SpanStyle(color = Color(0xFFEF4444))) { append("*") }
+                }, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Gray900)
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { if (it.length <= 100) title = it },
+                    placeholder = { Text("Summarize your review in a few words", fontSize = 14.sp) },
+                    modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(8.dp), colors = fieldColors
+                )
+                Text("${title.length}/100 characters", fontSize = 12.sp, color = Color(0xFF9CA3AF), modifier = Modifier.padding(top = 4.dp))
+            }
 
-                    Text("Add Photos (Optional)", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Color(0xFF0F172A))
-                    Text("Supported formats: JPG, PNG | Max 5 images | Max 5MB each", fontSize = 12.sp, color = Color(0xFF64748B))
-                    OutlinedButton(onClick = { picker.launch("image/*") }, enabled = !isSubmitting) { Text("Select Images") }
-                    if (images.isNotEmpty()) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            images.forEachIndexed { index, uri ->
-                                Box {
+            Column {
+                Text(androidx.compose.ui.text.buildAnnotatedString {
+                    append("Your Review ")
+                    withStyle(androidx.compose.ui.text.SpanStyle(color = Color(0xFFEF4444))) { append("*") }
+                }, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Gray900)
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = comment,
+                    onValueChange = { if (it.length <= 5000) comment = it },
+                    placeholder = { Text("Share your detailed experience with this product...", fontSize = 14.sp) },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp), minLines = 5, shape = RoundedCornerShape(8.dp), colors = fieldColors
+                )
+                Text("${comment.length}/5000 characters", fontSize = 12.sp, color = Color(0xFF9CA3AF), modifier = Modifier.padding(top = 4.dp))
+            }
+
+            Column {
+                Text("Add Photos (Optional)", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Gray900)
+                Spacer(Modifier.height(8.dp))
+                Column(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Color(0x80F9FAFB))
+                        .border(2.dp, Gray300, RoundedCornerShape(8.dp)).padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(Icons.Default.Upload, null, tint = Color(0xFF0B2A66), modifier = Modifier.size(28.dp))
+                    Spacer(Modifier.height(8.dp))
+                    Text("Tap to select your images", fontSize = 14.sp, color = Color(0xFF4B5563))
+                    Text("Supported formats: JPG, PNG | Max 5 images | Max 5MB each", fontSize = 12.sp, color = Color(0xFF9CA3AF), modifier = Modifier.padding(top = 4.dp, bottom = 12.dp))
+                    Button(
+                        onClick = { picker.launch("image/*") }, enabled = !isSubmitting,
+                        shape = RoundedCornerShape(8.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2F6FE4))
+                    ) { Text("Select Images", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color.White) }
+                }
+                if (images.isNotEmpty()) {
+                    Spacer(Modifier.height(16.dp))
+                    images.chunked(2).forEach { rowImgs ->
+                        Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            rowImgs.forEach { uri ->
+                                val index = images.indexOf(uri)
+                                Box(Modifier.weight(1f)) {
                                     AsyncImage(
-                                        model = uri,
-                                        contentDescription = "Preview $index",
-                                        modifier = Modifier.size(64.dp).clip(RoundedCornerShape(8.dp)),
+                                        model = uri, contentDescription = "Preview $index",
+                                        modifier = Modifier.fillMaxWidth().height(96.dp).clip(RoundedCornerShape(8.dp)),
                                         contentScale = ContentScale.Crop
                                     )
-                                    Text(
-                                        text = "✕",
-                                        color = Color.White,
-                                        fontSize = 12.sp,
-                                        modifier = Modifier
-                                            .align(Alignment.TopEnd)
-                                            .background(Color(0xCC000000))
-                                            .clickable { images = images.filterIndexed { i, _ -> i != index } }
-                                            .padding(horizontal = 5.dp, vertical = 2.dp)
-                                    )
+                                    Box(
+                                        Modifier.align(Alignment.TopEnd).padding(8.dp).size(24.dp).clip(androidx.compose.foundation.shape.CircleShape)
+                                            .background(Color(0xFFDC2626)).clickable { images = images.filterIndexed { i, _ -> i != index } },
+                                        contentAlignment = Alignment.Center
+                                    ) { Text("✕", color = Color.White, fontSize = 12.sp) }
                                 }
                             }
+                            if (rowImgs.size == 1) Spacer(Modifier.weight(1f))
                         }
-                    }
-
-                    Text("What are the benefits? (Optional)", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Color(0xFF0F172A))
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        ReviewApi.BENEFIT_OPTIONS.forEach { benefit ->
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.clickable {
-                                    benefits = if (benefit in benefits) benefits - benefit else benefits + benefit
-                                }
-                            ) {
-                                Checkbox(
-                                    checked = benefit in benefits,
-                                    onCheckedChange = { benefits = if (it) benefits + benefit else benefits - benefit }
-                                )
-                                Text(benefit, fontSize = 14.sp, color = Color(0xFF374151))
-                            }
-                        }
-                    }
-
-                    Row(verticalAlignment = Alignment.Top) {
-                        Checkbox(checked = agreeTerms, onCheckedChange = { agreeTerms = it })
-                        Text(
-                            text = "I confirm that this review is based on my own experience and is my genuine opinion. I understand that false or misleading reviews may result in account suspension.",
-                            fontSize = 12.sp,
-                            color = Color(0xFF475569),
-                            modifier = Modifier.padding(top = 12.dp)
-                        )
                     }
                 }
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedButton(
-                    onClick = onNavigateBack,
-                    enabled = !isSubmitting,
-                    modifier = Modifier.weight(1f).height(50.dp),
-                    shape = RoundedCornerShape(8.dp)
-                ) { Text("Cancel", fontWeight = FontWeight.SemiBold) }
+            Column {
+                Text("What are the benefits? (Optional)", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Gray900)
+                Spacer(Modifier.height(12.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ReviewApi.BENEFIT_OPTIONS.forEach { benefit ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.clickable { benefits = if (benefit in benefits) benefits - benefit else benefits + benefit }
+                        ) {
+                            Checkbox(
+                                checked = benefit in benefits,
+                                onCheckedChange = { benefits = if (it) benefits + benefit else benefits - benefit },
+                                colors = CheckboxDefaults.colors(checkedColor = Color(0xFF6D28D9))
+                            )
+                            Text(benefit, fontSize = 14.sp, color = Color(0xFF374151))
+                        }
+                    }
+                }
+            }
+
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Color(0xFFF9FAFB)).border(1.dp, Color(0xFFE5E7EB), RoundedCornerShape(8.dp)).padding(12.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                Checkbox(checked = agreeTerms, onCheckedChange = { agreeTerms = it }, colors = CheckboxDefaults.colors(checkedColor = Color(0xFF6D28D9)))
+                Text(
+                    "I confirm that this review is based on my own experience and is my genuine opinion. I understand that false or misleading reviews may result in account suspension.",
+                    fontSize = 12.sp, color = Color(0xFF4B5563), lineHeight = 18.sp, modifier = Modifier.padding(top = 12.dp)
+                )
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                Button(
+                    onClick = onNavigateBack, enabled = !isSubmitting,
+                    modifier = Modifier.weight(1f).height(48.dp), shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE5E7EB), contentColor = Color(0xFF1F2937))
+                ) { Text("Cancel", fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
                 Button(
                     onClick = {
                         if (rating <= 0 || title.isBlank() || comment.isBlank()) {
                             submitError = "Please fill all required fields: Rating, Title, and Review"
-                            return@Button
-                        }
-                        if (!agreeTerms) {
-                            submitError = "Please agree to the terms before submitting"
                             return@Button
                         }
                         isSubmitting = true
@@ -285,15 +327,18 @@ fun WriteReviewScreen(
                             if (err == null) onReviewSubmitted() else submitError = err
                         }
                     },
-                    modifier = Modifier.weight(1f).height(50.dp),
-                    shape = RoundedCornerShape(8.dp),
-                    enabled = !isSubmitting,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFD700), contentColor = Color.Black)
+                    modifier = Modifier.weight(1f).height(48.dp), shape = RoundedCornerShape(8.dp),
+                    enabled = !isSubmitting && agreeTerms,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0B2A66), contentColor = Color.White, disabledContainerColor = Color(0x800B2A66), disabledContentColor = Color.White)
                 ) {
                     if (isSubmitting) {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.Black, strokeWidth = 2.dp)
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Submitting...", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                     } else {
-                        Text("Submit Review", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Icon(Icons.AutoMirrored.Filled.Send, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Submit Review", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }

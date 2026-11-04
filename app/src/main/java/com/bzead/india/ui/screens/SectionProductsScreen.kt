@@ -25,7 +25,8 @@ import com.bzead.india.ui.components.WebProductCard
 fun SectionProductsScreen(
     sectionId: String,
     onNavigateBack: () -> Unit,
-    onProductClick: (String) -> Unit
+    onProductClick: (String) -> Unit,
+    onNavigateToLogin: () -> Unit = {}
 ) {
     val wishlistIds by BzeadRepository.wishlistProductIds.collectAsState()
     val sectionTitle = remember(sectionId) {
@@ -125,9 +126,8 @@ fun SectionProductsScreen(
                             product = product,
                             onProductClick = { onProductClick(product.id) },
                             onWishlistToggle = { BzeadRepository.toggleWishlist(product.id) },
-                            onAddToCart = { BzeadRepository.addToCart(product) },
                             isInWishlist = wishlistIds.contains(product.id),
-                            isAlreadyInCart = BzeadRepository.isInCart(product.id)
+                            onNavigateToLogin = onNavigateToLogin
                         )
                     }
                 }

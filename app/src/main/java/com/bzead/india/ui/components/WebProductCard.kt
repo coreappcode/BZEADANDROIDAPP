@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.RemoveRedEye
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -35,6 +36,17 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.collectAsState
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.border
+import kotlinx.coroutines.launch
+import com.bzead.india.data.BzeadRepository
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -48,165 +60,204 @@ fun WebProductCard(
     product: Product,
     onProductClick: () -> Unit,
     onWishlistToggle: () -> Unit,
-    onAddToCart: () -> Unit,
     isInWishlist: Boolean,
-    isAlreadyInCart: Boolean,
+    onNavigateToLogin: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val isLoggedIn by BzeadRepository.isLoggedIn.collectAsState()
+    val cartItems by BzeadRepository.cartItems.collectAsState()
+    val scope = rememberCoroutineScope()
+    val flow = rememberAddToCartFlow(product, isLoggedIn, onNavigateToLogin) { onProductClick() }
+    var quickViewOpen by remember { mutableStateOf(false) }
+
+    // Web: "already in cart" only for logged-in users.
+    val alreadyInCart = isLoggedIn && cartItems.any { it.product.id == product.id }
+    val hasDiscount = product.originalPrice > product.price
+    val pct = discountPct(product.price, product.originalPrice)
+    val condition = conditionBadge(product.itemCondition)
+
     Card(
         modifier = modifier
             .fillMaxWidth()
             .clickable { onProductClick() }
             .testTag("product_card_${product.id}"),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF3F4F6)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
-        Column(modifier = Modifier.padding(10.dp)) {
-            // Image Container with Discount Badge & Wishlist Heart Toggle
+        Column {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(140.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFFF8FAFC))
+                    .aspectRatio(1f)
+                    .background(Color.White)
             ) {
                 AsyncImage(
                     model = product.imageUrl,
                     contentDescription = product.title,
-                    contentScale = ContentScale.Fit,
+                    contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
                 )
 
-                // Discount Tag
-                if (product.discountPercent > 0) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(6.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(Color(0xFF16A34A))
-                            .padding(horizontal = 6.dp, vertical = 3.dp)
-                    ) {
+                Column(
+                    modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    if (condition != null) {
                         Text(
-                            text = "-${product.discountPercent}%",
+                            text = condition.first,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(condition.second)
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                    if (hasDiscount && pct > 0) {
+                        Text(
+                            text = "$pct% OFF",
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            color = Color.White,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color(0xFFDC2626))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
                         )
                     }
                 }
 
-                // Wishlist Heart Button
-                IconButton(
-                    onClick = onWishlistToggle,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(4.dp)
-                        .size(30.dp)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.9f))
+                Column(
+                    modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Icon(
-                        imageVector = if (isInWishlist) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                        contentDescription = "Toggle Wishlist",
-                        tint = if (isInWishlist) Color(0xFFEF4444) else Color(0xFF64748B),
-                        modifier = Modifier.size(18.dp)
-                    )
+                    IconButton(
+                        onClick = onWishlistToggle,
+                        modifier = Modifier.size(34.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.8f))
+                    ) {
+                        Icon(
+                            imageVector = if (isInWishlist) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                            contentDescription = if (isInWishlist) "Remove from wishlist" else "Add to wishlist",
+                            tint = if (isInWishlist) Color(0xFFEF4444) else Color(0xFF6B7280),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    IconButton(
+                        onClick = { quickViewOpen = true },
+                        modifier = Modifier.size(34.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.8f))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.RemoveRedEye,
+                            contentDescription = "Quick view",
+                            tint = Color(0xFF374151),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Rating pill
-            if (product.rating > 0f) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color(0xFFFEF08A))
-                    .padding(horizontal = 6.dp, vertical = 2.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Star,
-                    contentDescription = null,
-                    tint = Color(0xFFCA8A04),
-                    modifier = Modifier.size(12.dp)
-                )
-                Spacer(modifier = Modifier.width(3.dp))
-                Text(
-                    text = "${product.rating} (${product.ratingCount})",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF854D0E)
-                )
-            }
-            }
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // Product Title
-            Text(
-                text = product.title,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Color(0xFF0F172A),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                lineHeight = 17.sp
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Price Row
-            Row(
-                verticalAlignment = Alignment.Bottom,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Text(
-                    text = "₹${product.price.toInt()}",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Black,
-                    color = Color(0xFF0F172A)
-                )
-
-                if (product.originalPrice > product.price) {
-                    Text(
-                        text = "₹${product.originalPrice.toInt()}",
-                        fontSize = 11.sp,
-                        color = Color(0xFF94A3B8),
-                        textDecoration = TextDecoration.LineThrough
-                    )
+            Column(modifier = Modifier.padding(6.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    if (product.rating > 0f) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFD97706), modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(text = "${product.rating}", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = Color.Black)
+                        }
+                    } else {
+                        Spacer(modifier = Modifier.width(1.dp))
+                    }
+                    if (product.brand.isNotEmpty()) {
+                        Text(
+                            text = product.brand.uppercase(),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF004AAD),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
-            }
 
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Add To Cart Button
-            Button(
-                onClick = onAddToCart,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isAlreadyInCart) Color(0xFF1E293B) else Color(0xFFFEF08A),
-                    contentColor = if (isAlreadyInCart) Color.White else Color(0xFF854D0E)
-                ),
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(36.dp)
-                    .testTag("add_to_cart_${product.id}")
-            ) {
-                Icon(
-                    imageVector = if (isAlreadyInCart) Icons.Default.Check else Icons.Default.ShoppingCart,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = if (isAlreadyInCart) "In Cart" else "Add to Cart",
+                    text = product.title,
                     fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Medium,
+                    color = Color.Black,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    lineHeight = 15.sp,
+                    modifier = Modifier.heightIn(min = 24.dp)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 2.dp),
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    if (hasDiscount) {
+                        Text(
+                            text = formatPrice(product.originalPrice),
+                            fontSize = 10.sp,
+                            color = Color(0xFF9CA3AF),
+                            textDecoration = TextDecoration.LineThrough
+                        )
+                    }
+                    Spacer(modifier = Modifier.weight(1f))
+                    Text(
+                        text = formatPrice(product.price),
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFFF0000)
+                    )
+                }
+
+                AddToCartButton(
+                    alreadyInCart = alreadyInCart,
+                    resolving = flow.resolving,
+                    onClick = { scope.launch { flow.handleAddToCart() } },
+                    modifier = Modifier.height(32.dp).testTag("add_to_cart_${product.id}"),
+                    fontSize = 10.sp
                 )
             }
         }
     }
+
+    if (quickViewOpen) {
+        QuickViewDialog(
+            product = product,
+            flow = flow,
+            isLoggedIn = isLoggedIn,
+            isInWishlist = isInWishlist,
+            onWishlistToggle = onWishlistToggle,
+            onViewDetails = onProductClick,
+            onClose = { quickViewOpen = false }
+        )
+    }
+    flow.selectorProduct?.let { selected ->
+        ProductVariantDialog(
+            product = selected,
+            fallbackPublicUnitPrice = product.price,
+            onClose = { flow.closeSelector() },
+            onAdded = { flow.onSelectorAdded() }
+        )
+    }
+}
+
+// Web ProductCard condition badge: used = blue-600, refurbished = green-600, brand_new/empty = none.
+private fun conditionBadge(condition: String?): Pair<String, Color>? = when (condition) {
+    "used_open_box" -> "Used - Open Box" to Color(0xFF2563EB)
+    "used_like_new" -> "Used - Like New" to Color(0xFF2563EB)
+    "used_very_good" -> "Used - Very Good" to Color(0xFF2563EB)
+    "used_good" -> "Used - Good" to Color(0xFF2563EB)
+    "used_acceptable" -> "Used - Acceptable" to Color(0xFF2563EB)
+    "refurbished" -> "Refurbished" to Color(0xFF16A34A)
+    else -> null
 }
