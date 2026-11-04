@@ -131,24 +131,86 @@ object BzeadRepository {
         return DeliveryEstimateApi.check(product, pin.trim(), country, token)
     }
 
-    /** Web `handleUseCurrentLocation` after the GPS fix: reverse geocode, then IP detection when the postal code is missing. */
-    suspend fun resolveLocation(latitude: Double, longitude: Double): DetectedLocation? {
-        val token = validToken() ?: SupabaseClient.ANON_KEY
-        val resolved = DeliveryEstimateApi.reverseGeocode(latitude, longitude, token)
-        val uid = session?.userId
-        if (uid != null && token != SupabaseClient.ANON_KEY) DeliveryEstimateApi.saveLocationCache(token, uid, resolved)
-        if (resolved.postalCode.isNotEmpty()) return resolved
-        val ip = DeliveryEstimateApi.detectByIp()
-        return resolved.copy(
-            postalCode = ip?.postalCode.orEmpty(),
-            country = resolved.country.ifEmpty { ip?.country.orEmpty().ifEmpty { ip?.countryCode.orEmpty() } }
-        )
+    private val _recentSearches = MutableStateFlow<List<String>>(emptyList())
+    val recentSearches: StateFlow<List<String>> = _recentSearches.asStateFlow()
+
+    private fun guestHistory(): List<String> {
+        val raw = appContext?.getSharedPreferences("bzead_search", android.content.Context.MODE_PRIVATE)
+            ?.getString("bzead_search_history", null) ?: return emptyList()
+        return try {
+            val arr = org.json.JSONArray(raw)
+            (0 until arr.length()).map { arr.getString(it) }
+        } catch (e: Exception) { emptyList() }
     }
 
-    private val _recentSearches = MutableStateFlow<List<String>>(
-        listOf("Headphones", "Mamaearth Sunscreen", "Smartwatch", "Sneakers", "Coffee Machine")
-    )
-    val recentSearches: StateFlow<List<String>> = _recentSearches.asStateFlow()
+    private fun writeGuestHistory(items: List<String>) {
+        appContext?.getSharedPreferences("bzead_search", android.content.Context.MODE_PRIVATE)
+            ?.edit()?.putString("bzead_search_history", org.json.JSONArray(items.take(20)).toString())?.apply()
+    }
+
+    private fun dedupeHistory(items: List<String>): List<String> {
+        val seen = HashSet<String>()
+        return items.filter { seen.add(it.lowercase()) }.take(5)
+    }
+
+    /** Web Search.tsx fetchHistory: user_search_history for users, local list for guests; 5 shown. */
+    suspend fun loadSearchHistory() {
+        val uid = session?.userId
+        if (uid == null) {
+            _recentSearches.value = dedupeHistory(guestHistory())
+            return
+        }
+        val token = validToken() ?: return
+        val r = SupabaseRest.request(
+            "GET", "user_search_history?select=typed_input&user_id=eq.$uid&order=searched_at.desc&limit=20", token
+        )
+        _recentSearches.value = if (r.ok) dedupeHistory(r.rows.map { it.optString("typed_input") }.filter { it.isNotBlank() }) else emptyList()
+    }
+
+    fun saveSearch(typed: String) {
+        val value = typed.trim()
+        if (value.isEmpty()) return
+        val uid = session?.userId
+        if (uid == null) {
+            writeGuestHistory(listOf(value) + guestHistory())
+            _recentSearches.value = dedupeHistory(guestHistory())
+            return
+        }
+        authScope.launch {
+            val token = validToken() ?: return@launch
+            val body = JSONObject().put("user_id", uid).put("typed_input", value).put("is_product_click", false)
+            SupabaseRest.request("POST", "user_search_history", token, body.toString())
+            loadSearchHistory()
+        }
+    }
+
+    fun deleteSearch(typed: String) {
+        val uid = session?.userId
+        if (uid == null) {
+            writeGuestHistory(guestHistory().filter { !it.equals(typed, ignoreCase = true) })
+            _recentSearches.value = dedupeHistory(guestHistory())
+            return
+        }
+        authScope.launch {
+            val token = validToken() ?: return@launch
+            SupabaseRest.request("DELETE", "user_search_history?user_id=eq.$uid&typed_input=eq.${java.net.URLEncoder.encode(typed, "UTF-8")}", token)
+            loadSearchHistory()
+        }
+    }
+
+    fun clearSearchHistory() {
+        val uid = session?.userId
+        if (uid == null) {
+            writeGuestHistory(emptyList())
+            _recentSearches.value = emptyList()
+            return
+        }
+        authScope.launch {
+            val token = validToken() ?: return@launch
+            SupabaseRest.request("DELETE", "user_search_history?user_id=eq.$uid", token)
+            _recentSearches.value = emptyList()
+        }
+    }
 
     suspend fun refreshHomeContent() {
         _isHomeLoading.value = true

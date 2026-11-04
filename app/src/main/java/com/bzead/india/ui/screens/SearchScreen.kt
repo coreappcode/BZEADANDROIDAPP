@@ -74,6 +74,8 @@ fun SearchScreen(
     var searchResults by remember { mutableStateOf<List<Product>>(emptyList()) }
     var searchError by remember { mutableStateOf<String?>(null) }
 
+    androidx.compose.runtime.LaunchedEffect(Unit) { BzeadRepository.loadSearchHistory() }
+
     androidx.compose.runtime.LaunchedEffect(searchQuery) {
         searchError = null
         if (searchQuery.isBlank()) {
@@ -121,6 +123,8 @@ fun SearchScreen(
                         )
                     },
                     singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { BzeadRepository.saveSearch(searchQuery) }),
                     leadingIcon = {
                         Icon(
                             imageVector = Icons.Default.Search,
@@ -174,7 +178,7 @@ fun SearchScreen(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "Popular Searches in India",
+                        text = "Recent Searches",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary
@@ -195,12 +199,21 @@ fun SearchScreen(
                             color = Color.White,
                             shadowElevation = 1.dp
                         ) {
-                            Text(
-                                text = tag,
-                                fontSize = 13.sp,
-                                color = TextPrimary,
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(start = 14.dp, top = 8.dp, bottom = 8.dp, end = 8.dp)
+                            ) {
+                                Text(text = tag, fontSize = 13.sp, color = TextPrimary)
+                                Text(
+                                    text = "✕",
+                                    fontSize = 13.sp,
+                                    color = TextSecondary,
+                                    modifier = Modifier
+                                        .clickable { BzeadRepository.deleteSearch(tag) }
+                                        .padding(start = 8.dp)
+                                        .testTag("recent_delete_$tag")
+                                )
+                            }
                         }
                     }
                 }
@@ -302,7 +315,10 @@ fun SearchScreen(
                         ProductCard(
                             product = product,
                             isWishlisted = wishlistIds.contains(product.id),
-                            onProductClick = { onNavigateToProduct(product.id) },
+                            onProductClick = {
+                                BzeadRepository.saveSearch(searchQuery)
+                                onNavigateToProduct(product.id)
+                            },
                             onWishlistToggle = { BzeadRepository.toggleWishlist(product.id) },
                             onAddToCart = {
                                 BzeadRepository.addToCart(product)

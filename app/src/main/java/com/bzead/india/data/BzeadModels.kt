@@ -71,5 +71,6 @@ data class Product(
     val originCountry: String = "",
     val shipsInternationally: Boolean = false,
     val images: List<String> = emptyList(),
+    val offerSummary: String? = null,
     val specifications: Map<String, String> = emptyMap()
 )

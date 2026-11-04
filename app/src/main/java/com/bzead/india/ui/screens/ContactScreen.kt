@@ -36,7 +36,6 @@ fun ContactScreen(
     var fullName by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var message by remember { mutableStateOf("") }
-    var isSubmitted by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -65,39 +64,16 @@ fun ContactScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text(
-                text = "We'd love to hear from you",
+                text = "Contact Us",
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFF0F172A)
             )
             Text(
-                text = "Send us a message and we'll get back to you as soon as possible.",
+                text = "We'd love to hear from you. Send us a message and we'll get back to you as soon as possible.",
                 fontSize = 14.sp,
                 color = Color(0xFF64748B)
             )
-
-            if (isSubmitted) {
-                Surface(
-                    color = Color(0xFFDCFCE7),
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            text = "Message Sent Successfully!",
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF166534),
-                            fontSize = 16.sp
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Thank you for reaching out to Bzead India support. We will get back to you shortly.",
-                            color = Color(0xFF166534),
-                            fontSize = 13.sp
-                        )
-                    }
-                }
-            }
 
             // Contact Form Card
             Card(
@@ -113,7 +89,7 @@ fun ContactScreen(
                     OutlinedTextField(
                         value = fullName,
                         onValueChange = { fullName = it },
-                        label = { Text("Full Name *") },
+                        label = { Text("Full Name") },
                         leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, tint = Color.Gray) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
@@ -122,7 +98,7 @@ fun ContactScreen(
                     OutlinedTextField(
                         value = email,
                         onValueChange = { email = it },
-                        label = { Text("Email Address *") },
+                        label = { Text("Email Address") },
                         leadingIcon = { Icon(Icons.Default.Email, contentDescription = null, tint = Color.Gray) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
@@ -131,7 +107,7 @@ fun ContactScreen(
                     OutlinedTextField(
                         value = message,
                         onValueChange = { message = it },
-                        label = { Text("Message *") },
+                        label = { Text("Message") },
                         leadingIcon = { Icon(Icons.Default.Message, contentDescription = null, tint = Color.Gray) },
                         placeholder = { Text("How can we help you?") },
                         modifier = Modifier
@@ -143,7 +119,6 @@ fun ContactScreen(
                     Button(
                         onClick = {
                             if (fullName.isNotBlank() && email.isNotBlank() && message.isNotBlank()) {
-                                isSubmitted = true
                                 val text = "*Name:* ${fullName.trim()}\n*Email:* ${email.trim()}\n*Message:* ${message.trim()}"
                                 val url = "https://wa.me/$WHATSAPP_NUMBER?text=${Uri.encode(text)}"
                                 try {
@@ -163,7 +138,7 @@ fun ContactScreen(
                         )
                     ) {
                         Text(
-                            text = "Send Message",
+                            text = "Send via WhatsApp",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -171,7 +146,7 @@ fun ContactScreen(
                 }
             }
 
-            // Contact Info & Office Address Card
+            // Contact information (web Contact.tsx "Get in Touch")
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
@@ -182,40 +157,60 @@ fun ContactScreen(
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    Text(
-                        text = "Support Information",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp,
-                        color = Color.White
-                    )
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Phone, contentDescription = null, tint = Color(0xFFFFD700))
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text("WhatsApp Support", fontSize = 12.sp, color = Color(0xFF94A3B8))
-                            Text("+$WHATSAPP_NUMBER", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                        }
-                    }
+                    Text("Get in Touch", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.White)
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Email, contentDescription = null, tint = Color(0xFFFFD700))
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
-                            Text("Customer Support Email", fontSize = 12.sp, color = Color(0xFF94A3B8))
+                            Text("Email", fontSize = 12.sp, color = Color(0xFF94A3B8))
                             Text("support@bzead.com", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
                         }
                     }
-
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Email, contentDescription = null, tint = Color(0xFFFFD700))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text("Admin Contact", fontSize = 12.sp, color = Color(0xFF94A3B8))
+                            Text("admin@bzead.com", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Phone, contentDescription = null, tint = Color(0xFFFFD700))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text("Phone", fontSize = 12.sp, color = Color(0xFF94A3B8))
+                            Text("+44 7555394997", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                    }
                     Row(verticalAlignment = Alignment.Top) {
                         Icon(Icons.Default.LocationOn, contentDescription = null, tint = Color(0xFFFFD700))
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
-                            Text("Office Address", fontSize = 12.sp, color = Color(0xFF94A3B8))
-                            Text("Bzead India Ecommerce Limited", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                            Text("MG Road, Bengaluru, Karnataka - 560001", fontSize = 13.sp, color = Color(0xFFCBD5E1))
+                            Text("Address", fontSize = 12.sp, color = Color(0xFF94A3B8))
+                            Text("46/A1, PKP BUILDING, KANNUR, KERALA, INDIA", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
                         }
                     }
+                }
+            }
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Response Times", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color(0xFF0F172A))
+                    Text("• General enquiries: within 24–48 hours", fontSize = 13.sp, color = Color(0xFF475569))
+                    Text("• Order-related issues: within 24 hours", fontSize = 13.sp, color = Color(0xFF475569))
+                    Text("• Account security concerns: within 12 hours", fontSize = 13.sp, color = Color(0xFF475569))
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text("Before You Write", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color(0xFF0F172A))
+                    Text(
+                        "For account-related issues such as password resets, OTP problems, or email verification, please try the self-service options on the login page first. If the issue persists, include your registered email address in your message so we can assist you more quickly.",
+                        fontSize = 13.sp, color = Color(0xFF475569)
+                    )
                 }
             }
         }

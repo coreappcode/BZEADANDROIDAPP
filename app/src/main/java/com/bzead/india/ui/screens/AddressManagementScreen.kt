@@ -345,6 +345,14 @@ fun AddressManagementScreen(
                         )
                     }
                     OutlinedTextField(
+                        value = DeliveryAddress.INDIA_COUNTRY_NAME,
+                        onValueChange = {},
+                        readOnly = true,
+                        enabled = false,
+                        label = { Text("Country") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
                         value = pinCode,
                         onValueChange = { pinCode = it },
                         label = { Text("PIN Code (6 digits) *") },
@@ -395,7 +403,7 @@ fun AddressManagementScreen(
                             addressType = addressType,
                             isDefault = isDefault,
                             email = email.trim(),
-                            country = editingAddress?.country ?: DeliveryAddress.INDIA_COUNTRY_NAME,
+                            country = DeliveryAddress.INDIA_COUNTRY_NAME,
                             deliveryNotes = deliveryNotes.trim()
                         )
                         val invalid = AddressValidation.validate(newAddr, checkout = false)

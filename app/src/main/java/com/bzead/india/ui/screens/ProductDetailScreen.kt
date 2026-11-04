@@ -4,6 +4,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -70,6 +71,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.bzead.india.data.BzeadRepository
+import com.bzead.india.data.VariantSelection
 import com.bzead.india.model.ProductVariant
 import com.bzead.india.theme.BzeadAccent
 import com.bzead.india.theme.BzeadPrimary
@@ -88,6 +90,8 @@ fun ProductDetailScreen(
     onNavigateBack: () -> Unit,
     onNavigateToCart: () -> Unit,
     onNavigateToWriteReview: (String) -> Unit = {},
+    onNavigateToLogin: () -> Unit = {},
+    onNavigateToAddresses: () -> Unit = {},
     snackbarHostState: SnackbarHostState,
     modifier: Modifier = Modifier
 ) {
@@ -108,11 +112,48 @@ fun ProductDetailScreen(
     }
 
     val isWishlisted = wishlistIds.contains(product.id)
-    var selectedVariant by remember(product.variants) { mutableStateOf<ProductVariant?>(product.variants.firstOrNull()) }
-    var pinCodeInput by remember { mutableStateOf("560103") }
-    var pinVerified by remember { mutableStateOf(true) }
+    val isLoggedIn by BzeadRepository.isLoggedIn.collectAsState()
+    val sizes = remember(product.variants) { VariantSelection.availableSizes(product.variants) }
+    val colors = remember(product.variants) { VariantSelection.availableColors(product.variants) }
+    val colorHex = remember(product.variants) { VariantSelection.colorHexByName(product.variants) }
+    val requiresSize = sizes.size > 1
+    val requiresColor = colors.size > 1
+    var selectedSize by remember(product.variants) { mutableStateOf("") }
+    var selectedColor by remember(product.variants) { mutableStateOf("") }
+    var galleryIndex by remember(product.id) { mutableStateOf(0) }
 
-    val activePrice = product.price + (selectedVariant?.priceDelta ?: 0.0)
+    // Web effects: default to the first in-stock size/colour; clear a selection that is no longer offered.
+    androidx.compose.runtime.LaunchedEffect(sizes) {
+        if (selectedSize.isEmpty() && sizes.isNotEmpty()) selectedSize = VariantSelection.preferredSize(product.variants, sizes)
+        else if (sizes.size > 1 && selectedSize.isNotEmpty() && !sizes.contains(selectedSize)) selectedSize = ""
+    }
+    androidx.compose.runtime.LaunchedEffect(colors) {
+        if (selectedColor.isEmpty() && colors.isNotEmpty()) selectedColor = VariantSelection.preferredColor(product.variants, colors)
+        else if (colors.size > 1 && selectedColor.isNotEmpty() && !colors.contains(selectedColor)) selectedColor = ""
+    }
+
+    val currentVariant = VariantSelection.currentVariant(product.variants, selectedSize, selectedColor, requiresSize, requiresColor)
+    val effectiveStock = if (currentVariant != null) currentVariant.stock else product.stockCount
+    val inStock = effectiveStock > 0
+
+    var rpcPrice by remember(product.id) { mutableStateOf<Pair<Double, Double>?>(null) }
+    androidx.compose.runtime.LaunchedEffect(product.id, selectedSize, selectedColor, product.variants) {
+        val override = VariantSelection.pricingVariant(product.variants, selectedSize, selectedColor)?.price
+        com.bzead.india.data.SupabaseClient.fetchVariantPublicPrice(product.id, override)?.let { if (it.first > 0) rpcPrice = it }
+    }
+    val publicUnitPrice = rpcPrice?.first ?: currentVariant?.price ?: product.price
+    val effectiveMrp = rpcPrice?.second?.takeIf { it > 0 } ?: product.mrp
+    val discountPercent = if (effectiveMrp > publicUnitPrice) Math.round((effectiveMrp - publicUnitPrice) / effectiveMrp * 100).toInt() else 0
+    val gallery = remember(product, currentVariant, selectedColor) { VariantSelection.galleryImages(product, currentVariant, selectedColor) }
+    androidx.compose.runtime.LaunchedEffect(selectedSize, selectedColor) { galleryIndex = 0 }
+    val canBuy = inStock && (!requiresSize || selectedSize.isNotEmpty()) && (!requiresColor || selectedColor.isNotEmpty())
+
+    fun addSelectionToCart() {
+        BzeadRepository.addToCart(
+            product, selectedSize.ifEmpty { null }, selectedColor.ifEmpty { null },
+            currentVariant?.id?.trim()?.ifEmpty { null }, currentVariant?.sku?.trim()?.ifEmpty { null }, publicUnitPrice
+        )
+    }
 
     Box(modifier = modifier.fillMaxSize().background(Color(0xFFF8FAFC))) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -189,27 +230,33 @@ fun ProductDetailScreen(
                         )
                     } else {
                         AsyncImage(
-                            model = product.imageUrl,
+                            model = gallery.getOrNull(galleryIndex) ?: product.imageUrl,
                             contentDescription = product.title,
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Fit
                         )
                     }
 
-                    if (product.discountPercent > 0) {
-                        Box(
-                            modifier = Modifier
-                                .padding(16.dp)
-                                .align(Alignment.TopStart)
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(BzeadAccent)
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Text(
-                                text = "${product.discountPercent}% OFF",
-                                color = Color.White,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
+                }
+
+                if (gallery.size > 1) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color.White)
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        gallery.forEachIndexed { i, url ->
+                            AsyncImage(
+                                model = url,
+                                contentDescription = null,
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier
+                                    .size(56.dp)
+                                    .border(if (i == galleryIndex) 2.dp else 1.dp, if (i == galleryIndex) BzeadPrimary else Color(0xFFCBD5E1), RoundedCornerShape(6.dp))
+                                    .clickable { galleryIndex = i }
                             )
                         }
                     }
@@ -275,67 +322,71 @@ fun ProductDetailScreen(
                         Spacer(modifier = Modifier.height(12.dp))
 
                         // Price
-                        Row(verticalAlignment = Alignment.Bottom) {
-                            Text(
-                                text = "₹${activePrice.toInt()}",
-                                fontSize = 24.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = TextPrimary
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            if (product.mrp > activePrice) {
+                        if (effectiveMrp > publicUnitPrice) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(text = "MRP:", fontSize = 12.sp, color = TextSecondary)
+                                Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = "₹${product.mrp.toInt()}",
-                                    fontSize = 15.sp,
+                                    text = "₹${formatInr(effectiveMrp)}",
+                                    fontSize = 13.sp,
                                     color = TextSecondary,
                                     textDecoration = TextDecoration.LineThrough
                                 )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(DiscountBadgeBg)
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                                ) {
+                                if (discountPercent > 0) {
+                                    Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        text = "Save ₹${(product.mrp - activePrice).toInt()}",
-                                        color = DiscountBadgeText,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold
+                                        text = "($discountPercent% OFF)",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color(0xFFCC0C39)
                                     )
                                 }
                             }
+                            Spacer(modifier = Modifier.height(4.dp))
+                        }
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            Text(
+                                text = "₹${formatInr(publicUnitPrice)}",
+                                fontSize = 28.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = TextPrimary
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = "Selling Price", fontSize = 12.sp, color = TextSecondary)
                         }
 
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Inclusive of all taxes in India",
+                            text = "Inclusive of all taxes",
                             fontSize = 11.sp,
                             color = TextSecondary
                         )
 
                         Spacer(modifier = Modifier.height(10.dp))
-                        // In stock status
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.CheckCircle,
-                                contentDescription = "In Stock",
-                                tint = BzeadSuccess,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
+                        // Stock status
+                        val stockLabel = if (!inStock) "Out Of Stock" else if (effectiveStock < 10) "Limited Stock" else "In Stock"
+                        val stockColor = if (!inStock) Color(0xFFEF4444) else if (effectiveStock < 10) Color(0xFF3B82F6) else Color(0xFF22C55E)
+                        Text(
+                            text = stockLabel,
+                            fontSize = 12.sp,
+                            color = stockColor,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.testTag("pdp_stock_status")
+                        )
+                        if (!inStock) {
+                            Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = "In Stock • Ships directly from verified Indian partner",
+                                text = "This Product Is Currently Out Of Stock.",
                                 fontSize = 12.sp,
-                                color = BzeadSuccess,
-                                fontWeight = FontWeight.Medium
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFEF4444)
                             )
                         }
                     }
                 }
 
-                // Variants Selector if any
-                if (product.variants.isNotEmpty()) {
+                // Size / colour selection (web: colour circles, size buttons)
+                if (colors.isNotEmpty() || sizes.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
@@ -343,38 +394,75 @@ fun ProductDetailScreen(
                         shadowElevation = 1.dp
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
-                            Text(
-                                text = "Select Option / Variant",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = TextPrimary
-                            )
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                product.variants.forEach { v ->
-                                    val isSelected = selectedVariant?.id == v.id
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .border(
-                                                width = if (isSelected) 2.dp else 1.dp,
-                                                color = if (isSelected) BzeadPrimary else Color(0xFFCBD5E1),
-                                                shape = RoundedCornerShape(8.dp)
-                                            )
-                                            .background(if (isSelected) Color(0xFFEFF6FF) else Color.White)
-                                            .clickable { selectedVariant = v }
-                                            .padding(horizontal = 12.dp, vertical = 8.dp)
-                                            .testTag("variant_option_${v.id}")
-                                    ) {
-                                        Text(
-                                            text = v.size ?: v.color ?: v.name,
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                            fontSize = 13.sp,
-                                            color = if (isSelected) BzeadPrimary else TextPrimary
+                            if (colors.isNotEmpty()) {
+                                Text(
+                                    text = if (selectedColor.isNotEmpty()) "Colour: $selectedColor" else "Colour",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = TextPrimary
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    colors.forEach { name ->
+                                        val isSelected = selectedColor == name
+                                        val hex = colorHex[name.lowercase()] ?: "#9CA3AF"
+                                        val swatch = runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrDefault(Color(0xFF9CA3AF))
+                                        Box(
+                                            modifier = Modifier
+                                                .size(32.dp)
+                                                .clip(CircleShape)
+                                                .border(
+                                                    width = if (isSelected) 2.dp else 1.dp,
+                                                    color = if (isSelected) BzeadPrimary else Color(0xFFCBD5E1),
+                                                    shape = CircleShape
+                                                )
+                                                .padding(3.dp)
+                                                .clip(CircleShape)
+                                                .background(swatch)
+                                                .clickable { selectedColor = name }
+                                                .testTag("color_option_$name")
                                         )
+                                    }
+                                }
+                            }
+                            if (colors.isNotEmpty() && sizes.isNotEmpty()) Spacer(modifier = Modifier.height(14.dp))
+                            if (sizes.isNotEmpty()) {
+                                Text(
+                                    text = if (selectedSize.isNotEmpty()) "Size: $selectedSize" else "Size",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = TextPrimary
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    sizes.forEach { size ->
+                                        val isSelected = selectedSize == size
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .border(
+                                                    width = if (isSelected) 2.dp else 1.dp,
+                                                    color = if (isSelected) BzeadPrimary else Color(0xFFCBD5E1),
+                                                    shape = RoundedCornerShape(8.dp)
+                                                )
+                                                .background(if (isSelected) Color(0xFFEFF6FF) else Color.White)
+                                                .clickable { selectedSize = size }
+                                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                                                .testTag("size_option_$size")
+                                        ) {
+                                            Text(
+                                                text = size,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                fontSize = 13.sp,
+                                                color = if (isSelected) BzeadPrimary else TextPrimary
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -382,7 +470,24 @@ fun ProductDetailScreen(
                     }
                 }
 
-                // PIN Code Delivery Estimator
+                product.offerSummary?.let { offer ->
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 6.dp)
+                            .border(1.dp, Color(0xFF2F16C7), RoundedCornerShape(2.dp)),
+                        color = Color.White
+                    ) {
+                        Column {
+                            Box(modifier = Modifier.fillMaxWidth().background(Color(0xFF2F16C7)).padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
+                                Text("OFFER SECTION", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Text(offer, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF111111), modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
+                        }
+                    }
+                }
+
+                // Delivery estimate (web DeliveryEstimate)
                 Spacer(modifier = Modifier.height(8.dp))
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
@@ -390,83 +495,7 @@ fun ProductDetailScreen(
                     shadowElevation = 1.dp
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.LocalShipping,
-                                contentDescription = null,
-                                tint = BzeadPrimary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "Delivery & Logistics (India)",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = TextPrimary
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            OutlinedTextField(
-                                value = pinCodeInput,
-                                onValueChange = {
-                                    if (it.length <= 6) pinCodeInput = it
-                                },
-                                label = { Text("Enter 6-Digit PIN Code", fontSize = 12.sp) },
-                                singleLine = true,
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedTextColor = Color(0xFF0F172A),
-                                    unfocusedTextColor = Color(0xFF0F172A),
-                                    focusedContainerColor = Color.White,
-                                    unfocusedContainerColor = Color.White,
-                                    focusedBorderColor = BzeadPrimary,
-                                    unfocusedBorderColor = Color(0xFFCBD5E1)
-                                ),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(54.dp)
-                                    .testTag("pincode_input")
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Button(
-                                onClick = {
-                                    if (pinCodeInput.length == 6) {
-                                        pinVerified = true
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = BzeadPrimary),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier
-                                    .height(54.dp)
-                                    .testTag("check_pincode_button")
-                            ) {
-                                Text("Check", fontWeight = FontWeight.Bold)
-                            }
-                        }
-
-                        if (pinVerified) {
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.LocationOn,
-                                    contentDescription = null,
-                                    tint = BzeadSuccess,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "Eligible for Free Delivery to $pinCodeInput within 3-4 days via Shiprocket Express.",
-                                    fontSize = 12.sp,
-                                    color = BzeadSuccess,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
-                        }
+                        DeliveryEstimateBox(product = product, onAddNewAddress = onNavigateToAddresses)
                     }
                 }
 
@@ -683,10 +712,15 @@ fun ProductDetailScreen(
             ) {
                 // Add to Cart Button
                 Button(
+                    enabled = canBuy,
                     onClick = {
-                        BzeadRepository.addToCart(product, selectedVariant)
-                        scope.launch {
-                            snackbarHostState.showSnackbar("Added to Bag: ${product.title}")
+                        if (!isLoggedIn) {
+                            onNavigateToLogin()
+                        } else {
+                            addSelectionToCart()
+                            scope.launch {
+                                snackbarHostState.showSnackbar("Product added to cart")
+                            }
                         }
                     },
                     modifier = Modifier
@@ -706,14 +740,19 @@ fun ProductDetailScreen(
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text(text = "Add to Bag", fontWeight = FontWeight.Bold)
+                    Text(text = "Add To Cart", fontWeight = FontWeight.Bold)
                 }
 
                 // Buy Now Button
                 Button(
+                    enabled = canBuy,
                     onClick = {
-                        BzeadRepository.addToCart(product, selectedVariant)
-                        onNavigateToCart()
+                        if (!isLoggedIn) {
+                            onNavigateToLogin()
+                        } else {
+                            addSelectionToCart()
+                            onNavigateToCart()
+                        }
                     },
                     modifier = Modifier
                         .weight(1f)
@@ -733,3 +772,7 @@ fun ProductDetailScreen(
     }
 }
 
+
+private fun formatInr(value: Double): String =
+    if (value % 1.0 == 0.0) String.format(java.util.Locale("en", "IN"), "%,d", value.toLong())
+    else String.format(java.util.Locale("en", "IN"), "%,.2f", value)

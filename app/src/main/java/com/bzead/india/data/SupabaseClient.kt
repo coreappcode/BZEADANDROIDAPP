@@ -43,6 +43,45 @@ object SupabaseClient {
     }
 
     /** Web `parseProduct` equivalent: maps a `products` row (plus optional `product_variants`) to the Android model. */
+    private fun offerTitle(type: String): String = when (type) {
+        "buy_x_get_y" -> "Buy X Get Y"
+        "bundle_discount" -> "Bundle Discount"
+        "special_day" -> "Special Day"
+        else -> (type.ifEmpty { "Offer" }).replace('_', ' ').split(" ").joinToString(" ") { w -> w.replaceFirstChar { it.uppercase() } }
+    }
+
+    private fun numText(o: JSONObject, key: String): String {
+        val d = o.optDouble(key)
+        return if (d == Math.floor(d)) d.toLong().toString() else d.toString()
+    }
+
+    /** Web ProductDetailsPage activeOffers[0] + formatOfferSummary. */
+    private fun firstActiveOfferSummary(arr: org.json.JSONArray?): String? {
+        if (arr == null) return null
+        val now = System.currentTimeMillis()
+        fun ts(v: String): Long? = try { java.time.Instant.parse(v).toEpochMilli() } catch (e: Exception) {
+            try { java.time.OffsetDateTime.parse(v).toInstant().toEpochMilli() } catch (e2: Exception) { null }
+        }
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            if (!o.isNull("is_active") && !o.optBoolean("is_active", true)) continue
+            val start = if (o.isNull("start_time")) null else ts(o.optString("start_time"))
+            val end = if (o.isNull("end_time")) null else ts(o.optString("end_time"))
+            if (start != null && now < start) continue
+            if (end != null && now > end) continue
+            val type = if (o.isNull("offer_type")) "" else o.optString("offer_type")
+            return when {
+                !o.isNull("discount_percent") -> "${numText(o, "discount_percent")}% OFF"
+                type == "buy_x_get_y" && o.optDouble("buy_quantity", 0.0) > 0 && o.optDouble("get_quantity", 0.0) > 0 ->
+                    "Buy ${numText(o, "buy_quantity")} Get ${numText(o, "get_quantity")}"
+                type == "bundle_discount" && o.optDouble("bundle_min_qty", 0.0) > 0 && !o.isNull("bundle_discount") ->
+                    "${numText(o, "bundle_discount")}% OFF on ${numText(o, "bundle_min_qty")}+ items"
+                else -> offerTitle(type)
+            }
+        }
+        return null
+    }
+
     fun parseProduct(o: JSONObject, index: Int = 0): Product {
         val images = o.optJSONArray("images")
         val primary = o.text("image_url").ifEmpty { images?.optString(0).orEmpty() }
@@ -89,6 +128,7 @@ object SupabaseClient {
             originCountry = o.text("origin_country"),
             shipsInternationally = o.optBoolean("ships_internationally", false),
             images = images?.let { a -> (0 until a.length()).map { a.optString(it) }.filter { it.isNotBlank() } }.orEmpty(),
+            offerSummary = firstActiveOfferSummary(o.optJSONArray("offer_rules")),
             specifications = emptyMap()
         )
     }
@@ -237,7 +277,7 @@ object SupabaseClient {
         }
         val r = SupabaseRest.request(
             "GET",
-            "products?select=*,product_variants(*)&$column=eq.${SupabaseRest.enc(ref)}&approval_status=eq.approved&is_active=eq.true",
+            "products?select=*,product_variants(*),offer_rules(*)&$column=eq.${SupabaseRest.enc(ref)}&approval_status=eq.approved&is_active=eq.true",
             ANON_KEY
         )
         val row = r.rows.objects().firstOrNull() ?: return@withContext null

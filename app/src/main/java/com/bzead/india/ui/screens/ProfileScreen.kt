@@ -432,24 +432,56 @@ fun ProfileScreen(
             ) {
                 Column(modifier = Modifier.padding(vertical = 4.dp)) {
                     ProfileMenuRow(
-                        title = "Shipping & Delivery Policy",
-                        subtitle = "Dispatch times, carriers and rates across India",
+                        title = "Shipping Policy",
+                        subtitle = "Delivery, tracking and damaged packages",
                         icon = Icons.Default.Policy,
                         onClick = { onNavigateToPolicy("shipping") },
                         testTag = "menu_shipping_policy"
                     )
                     Divider(modifier = Modifier.padding(horizontal = 16.dp), color = Color(0xFFF1F5F9))
                     ProfileMenuRow(
-                        title = "Refund & Return Policy",
-                        subtitle = "7-day return guidelines & guarantee",
+                        title = "Cancellation & Return Policy",
+                        subtitle = "Cancellations, returns and refunds",
                         icon = Icons.Default.Policy,
                         onClick = { onNavigateToPolicy("refund") },
                         testTag = "menu_refund_policy"
                     )
                     Divider(modifier = Modifier.padding(horizontal = 16.dp), color = Color(0xFFF1F5F9))
                     ProfileMenuRow(
+                        title = "Privacy Policy",
+                        subtitle = "How your data is handled",
+                        icon = Icons.Default.Policy,
+                        onClick = { onNavigateToPolicy("privacy") },
+                        testTag = "menu_privacy_policy"
+                    )
+                    Divider(modifier = Modifier.padding(horizontal = 16.dp), color = Color(0xFFF1F5F9))
+                    ProfileMenuRow(
+                        title = "Terms & Conditions",
+                        subtitle = "Terms for using the platform",
+                        icon = Icons.Default.Policy,
+                        onClick = { onNavigateToPolicy("terms") },
+                        testTag = "menu_terms_conditions"
+                    )
+                    Divider(modifier = Modifier.padding(horizontal = 16.dp), color = Color(0xFFF1F5F9))
+                    ProfileMenuRow(
+                        title = "Terms of Use",
+                        subtitle = "Terms of use of the platform",
+                        icon = Icons.Default.Policy,
+                        onClick = { onNavigateToPolicy("terms-of-service") },
+                        testTag = "menu_terms_of_use"
+                    )
+                    Divider(modifier = Modifier.padding(horizontal = 16.dp), color = Color(0xFFF1F5F9))
+                    ProfileMenuRow(
+                        title = "About BZEAD",
+                        subtitle = "Company and marketplace information",
+                        icon = Icons.Default.Policy,
+                        onClick = { onNavigateToPolicy("about") },
+                        testTag = "menu_about"
+                    )
+                    Divider(modifier = Modifier.padding(horizontal = 16.dp), color = Color(0xFFF1F5F9))
+                    ProfileMenuRow(
                         title = "Customer Support & Contact",
-                        subtitle = "WhatsApp • support@bzead.com • Helpline",
+                        subtitle = "WhatsApp • support@bzead.com",
                         icon = Icons.AutoMirrored.Filled.HelpOutline,
                         onClick = onNavigateToContact,
                         testTag = "menu_contact"

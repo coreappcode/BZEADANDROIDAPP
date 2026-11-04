@@ -346,6 +346,17 @@ fun ShippingAddressScreen(
                         Spacer(modifier = Modifier.height(8.dp))
 
                         OutlinedTextField(
+                            value = DeliveryAddress.INDIA_COUNTRY_NAME,
+                            onValueChange = {},
+                            readOnly = true,
+                            enabled = false,
+                            label = { Text("Country") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        OutlinedTextField(
                             value = pinCode,
                             onValueChange = { if (it.length <= 6) pinCode = it },
                             label = { Text("PIN Code (6 Digits) *") },
@@ -387,6 +398,7 @@ fun ShippingAddressScreen(
                                     city = city.trim(),
                                     state = state.trim(),
                                     pinCode = pinCode.trim(),
+                                    country = DeliveryAddress.INDIA_COUNTRY_NAME,
                                     deliveryNotes = notes.trim(),
                                     isDefault = addresses.isEmpty()
                                 )

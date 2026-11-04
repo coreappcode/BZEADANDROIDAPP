@@ -150,6 +150,12 @@ class MainActivity : ComponentActivity(), com.razorpay.PaymentResultWithDataList
                             parts.size == 1 && parts[0] == "notifications" -> currentScreen = AppScreen.Notifications
                             parts.size == 1 && parts[0] == "profile" -> currentScreen = AppScreen.Profile
                             parts.size == 1 && parts[0] == "contact" -> currentScreen = AppScreen.Contact
+                            parts.size == 1 && parts[0] == "shipping-policy" -> currentScreen = AppScreen.Policy("shipping")
+                            parts.size == 1 && parts[0] == "refund-policy" -> currentScreen = AppScreen.Policy("refund")
+                            parts.size == 1 && parts[0] == "privacy-policy" -> currentScreen = AppScreen.Policy("privacy")
+                            parts.size == 1 && parts[0] == "terms-and-conditions" -> currentScreen = AppScreen.Policy("terms")
+                            parts.size == 1 && parts[0] == "terms-of-service" -> currentScreen = AppScreen.Policy("terms-of-service")
+                            parts.size == 1 && parts[0] == "about" -> currentScreen = AppScreen.Policy("about")
                             parts.size == 1 && (parts[0] == "all-categories" || parts[0].isEmpty()) -> currentScreen = AppScreen.Home
                         }
                     } else if (link.startsWith("http://") || link.startsWith("https://")) {
@@ -290,6 +296,8 @@ class MainActivity : ComponentActivity(), com.razorpay.PaymentResultWithDataList
                                         onNavigateBack = { currentScreen = AppScreen.Home },
                                         onNavigateToCart = { currentScreen = AppScreen.Cart },
                                         onNavigateToWriteReview = { id -> currentScreen = AppScreen.WriteReview(id) },
+                                        onNavigateToLogin = { currentScreen = AppScreen.Login },
+                                        onNavigateToAddresses = { currentScreen = AppScreen.AddressManagement },
                                         snackbarHostState = snackbarHostState
                                     )
                                 }

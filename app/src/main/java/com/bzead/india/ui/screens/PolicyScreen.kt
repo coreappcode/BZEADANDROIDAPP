@@ -29,12 +29,14 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bzead.india.data.PolicyContent
 import com.bzead.india.theme.BzeadPrimary
 import com.bzead.india.theme.TextPrimary
 import com.bzead.india.theme.TextSecondary
@@ -46,12 +48,8 @@ fun PolicyScreen(
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val title = when (policyType) {
-        "shipping" -> "Shipping & Delivery Policy"
-        "refund" -> "Return & Refund Policy"
-        "contact" -> "Customer Support & Contact"
-        else -> "Terms & Conditions"
-    }
+    val blocks = remember(policyType) { PolicyContent.blocks(policyType) }
+    val title = blocks.firstOrNull { it.kind == "h1" }?.text ?: "Terms & Conditions"
 
     Column(
         modifier = modifier
@@ -88,75 +86,12 @@ fun PolicyScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            when (policyType) {
-                "shipping" -> {
-                    PolicySectionCard(
-                        title = "Domestic India Delivery",
-                        body = "BZEAD India delivers to over 27,000+ serviceable pin codes across all states and union territories of India through our integrated courier network (Shiprocket, Delhivery, BlueDart, DTDC)."
-                    )
-                    PolicySectionCard(
-                        title = "Estimated Delivery Timelines",
-                        body = "• Metro Cities (Delhi NCR, Mumbai, Bengaluru, Chennai, Hyderabad, Kolkata): 2 to 3 Business Days.\n• Rest of India: 3 to 5 Business Days.\n• Remote & North-East / Island Regions: 5 to 7 Business Days."
-                    )
-                    PolicySectionCard(
-                        title = "Shipping Charges",
-                        body = "Orders above ₹499 qualify for FREE Standard Delivery. For orders below ₹499, a nominal flat delivery charge of ₹40 is applied. Priority Express dispatch is available for ₹99."
-                    )
-                }
-                "refund" -> {
-                    PolicySectionCard(
-                        title = "7-Day Hassle-Free Returns",
-                        body = "We want you to be completely delighted with your purchase. Eligible products can be returned or replaced within 7 days of delivery if damaged, defective, or different from description."
-                    )
-                    PolicySectionCard(
-                        title = "Instant Refund Processing",
-                        body = "Once the returned package is collected by our courier partner and passes inspection at our fulfillment warehouse, refunds are initiated immediately to your original payment mode (UPI, card, or bank account) within 24-48 business hours."
-                    )
-                    PolicySectionCard(
-                        title = "Non-Returnable Items",
-                        body = "Perishable food products, hygiene essentials, intimate apparel, and customized items cannot be returned unless received in a damaged or defective condition."
-                    )
-                }
-                "contact" -> {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = Color.White),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text(
-                                text = "BZEAD India Support Office",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = TextPrimary
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-
-                            ContactRow(
-                                icon = Icons.Default.Email,
-                                title = "Customer Care Email",
-                                value = "support@bzead.in / help@bzead.com"
-                            )
-                            Spacer(modifier = Modifier.height(10.dp))
-                            ContactRow(
-                                icon = Icons.Default.Phone,
-                                title = "Toll-Free Helpline",
-                                value = "1800-209-BZEAD (+91 80 4920 1800)"
-                            )
-                            Spacer(modifier = Modifier.height(10.dp))
-                            ContactRow(
-                                icon = Icons.Default.LocationOn,
-                                title = "Registered Office",
-                                value = "BZEAD E-Commerce India Pvt Ltd, Outer Ring Road, Bellandur, Bengaluru, Karnataka 560103"
-                            )
-                        }
-                    }
-                }
-                else -> {
-                    PolicySectionCard(
-                        title = "Terms of Service",
-                        body = "By accessing or using the BZEAD India mobile marketplace, you agree to comply with our Terms of Service and applicable regulations under the Indian Information Technology Act and Consumer Protection (E-Commerce) Rules."
-                    )
+            blocks.forEach { block ->
+                when (block.kind) {
+                    "h1" -> Text(block.text, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                    "h2", "h3", "h4" -> Text(block.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = BzeadPrimary)
+                    "li" -> Text("•  ${block.text}", style = MaterialTheme.typography.bodyMedium, color = TextSecondary, lineHeight = 22.sp)
+                    else -> Text(block.text, style = MaterialTheme.typography.bodyMedium, color = TextSecondary, lineHeight = 22.sp)
                 }
             }
         }
