@@ -1,4 +1,4 @@
-package com.example
+package com.bzead.india
 
 import org.junit.Assert.*
 import org.junit.Test

@@ -1,4 +1,4 @@
-package com.example
+package com.bzead.india
 
 import android.app.Activity
 import android.os.Bundle
@@ -53,8 +53,8 @@ import com.bzead.india.ui.screens.ProfileScreen
 import com.bzead.india.ui.screens.SearchScreen
 import com.bzead.india.ui.screens.SignupScreen
 import com.bzead.india.ui.screens.WishlistScreen
-import com.example.ui.splash.SplashScreen
-import com.example.ui.theme.MyApplicationTheme
+import com.bzead.india.ui.splash.SplashScreen
+import com.bzead.india.ui.theme.MyApplicationTheme
 
 import com.bzead.india.ui.screens.ShippingAddressScreen
 import com.bzead.india.ui.screens.OrderSummaryScreen

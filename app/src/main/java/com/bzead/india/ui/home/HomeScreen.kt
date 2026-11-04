@@ -1,4 +1,4 @@
-package com.example.ui.home
+package com.bzead.india.ui.home
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -62,7 +62,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
-import com.example.ui.splash.BZEAD_LOGO_URL
+import com.bzead.india.ui.splash.BZEAD_LOGO_URL
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

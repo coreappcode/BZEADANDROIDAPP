@@ -1,4 +1,4 @@
-package com.example.ui.splash
+package com.bzead.india.ui.splash
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
