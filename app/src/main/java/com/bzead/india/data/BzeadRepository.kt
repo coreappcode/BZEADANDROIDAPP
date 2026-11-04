@@ -125,6 +125,26 @@ object BzeadRepository {
         fresh.accessToken
     }
 
+    /** Web `useDeliveryEstimate.runCheck`; guests use the anon key like the web's anonymous client. */
+    suspend fun checkDelivery(product: Product, pin: String, country: String): DeliveryResult {
+        val token = validToken() ?: SupabaseClient.ANON_KEY
+        return DeliveryEstimateApi.check(product, pin.trim(), country, token)
+    }
+
+    /** Web `handleUseCurrentLocation` after the GPS fix: reverse geocode, then IP detection when the postal code is missing. */
+    suspend fun resolveLocation(latitude: Double, longitude: Double): DetectedLocation? {
+        val token = validToken() ?: SupabaseClient.ANON_KEY
+        val resolved = DeliveryEstimateApi.reverseGeocode(latitude, longitude, token)
+        val uid = session?.userId
+        if (uid != null && token != SupabaseClient.ANON_KEY) DeliveryEstimateApi.saveLocationCache(token, uid, resolved)
+        if (resolved.postalCode.isNotEmpty()) return resolved
+        val ip = DeliveryEstimateApi.detectByIp()
+        return resolved.copy(
+            postalCode = ip?.postalCode.orEmpty(),
+            country = resolved.country.ifEmpty { ip?.country.orEmpty().ifEmpty { ip?.countryCode.orEmpty() } }
+        )
+    }
+
     private val _recentSearches = MutableStateFlow<List<String>>(
         listOf("Headphones", "Mamaearth Sunscreen", "Smartwatch", "Sneakers", "Coffee Machine")
     )
@@ -242,10 +262,14 @@ object BzeadRepository {
     }
 
     fun addToCart(product: Product, variant: ProductVariant? = null) {
-        val size = variant?.size
-        val color = variant?.color
-        val sku = variant?.sku
-        val variantPrice = variant?.let { it.price ?: (product.price + it.priceDelta) }
+        addToCart(
+            product, variant?.size, variant?.color, variant?.id, variant?.sku,
+            variant?.let { it.price ?: (product.price + it.priceDelta) }
+        )
+    }
+
+    /** Web PDP `addToCart(product, 1, { selectedSize, selectedColor, selectedVariantId, selectedVariantSku, variantPrice })`. */
+    fun addToCart(product: Product, size: String?, color: String?, variantId: String?, sku: String?, variantPrice: Double?) {
         val key = UserDataApi.cartItemId(product.id, size, color, sku)
         val list = _cartItems.value.toMutableList()
         val idx = list.indexOfFirst { it.id == key }
@@ -254,7 +278,7 @@ object BzeadRepository {
         } else {
             CartItem(
                 id = key, product = product, quantity = 1, selectedSize = size, selectedColor = color,
-                selectedVariantId = variant?.id, selectedVariantSku = sku, variantPrice = variantPrice
+                selectedVariantId = variantId, selectedVariantSku = sku, variantPrice = variantPrice
             ).also { list.add(it) }
         }
         _cartItems.value = list

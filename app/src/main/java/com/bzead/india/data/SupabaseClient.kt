@@ -57,7 +57,12 @@ object SupabaseClient {
                 size = v.text("size").ifEmpty { null },
                 color = v.text("color").ifEmpty { null },
                 sku = v.text("sku").ifEmpty { null },
-                price = if (v.isNull("price")) null else v.optDouble("price")
+                price = if (v.isNull("price")) null else v.optDouble("price"),
+                variantType = v.text("variant_type"),
+                sizeValue = v.text("size_value").ifEmpty { null },
+                colorHex = v.text("color_hex").ifEmpty { null },
+                stock = if (v.isNull("stock")) 0 else v.optInt("stock", 0),
+                images = v.optJSONArray("images")?.let { a -> (0 until a.length()).map { a.optString(it) }.filter { it.isNotBlank() } }.orEmpty()
             )
         }
         return Product(
@@ -80,6 +85,10 @@ object SupabaseClient {
             stockCount = stock,
             description = o.text("description"),
             variants = variants,
+            sellerId = o.text("seller_id"),
+            originCountry = o.text("origin_country"),
+            shipsInternationally = o.optBoolean("ships_internationally", false),
+            images = images?.let { a -> (0 until a.length()).map { a.optString(it) }.filter { it.isNotBlank() } }.orEmpty(),
             specifications = emptyMap()
         )
     }
@@ -93,6 +102,19 @@ object SupabaseClient {
         return r.rows.objects().associate {
             it.text("product_id") to Pair(it.optDouble("selling_price", 0.0), it.optDouble("markup_mrp", 0.0))
         }
+    }
+
+    /** Web PDP price: RPC with the variant's price as an override when it has one, otherwise the plain RPC. Returns selling price to markup MRP. */
+    suspend fun fetchVariantPublicPrice(productId: String, overridePrice: Double?): Pair<Double, Double>? {
+        val body = JSONObject().put("p_product_ids", JSONArray().put(productId)).put("p_country", STOREFRONT_COUNTRY)
+        val path = if (overridePrice != null && overridePrice > 0) {
+            body.put("p_price_overrides", JSONObject().put(productId, overridePrice))
+            "rpc/get_public_product_prices_with_overrides"
+        } else "rpc/get_public_product_prices"
+        val r = SupabaseRest.request("POST", path, ANON_KEY, body.toString())
+        if (!r.ok) return null
+        val row = r.rows.objects().firstOrNull { it.text("product_id") == productId } ?: return null
+        return Pair(row.optDouble("selling_price", 0.0), row.optDouble("markup_mrp", 0.0))
     }
 
     /** Applies the RPC prices the way the web cards do: strike-through MRP only when `markup_mrp > price`. */

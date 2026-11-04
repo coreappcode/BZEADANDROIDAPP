@@ -19,7 +19,12 @@ data class ProductVariant(
     val size: String? = null,
     val color: String? = null,
     val sku: String? = null,
-    val price: Double? = null
+    val price: Double? = null,
+    val variantType: String = "",
+    val sizeValue: String? = null,
+    val colorHex: String? = null,
+    val stock: Int = 0,
+    val images: List<String> = emptyList()
 )
 
 data class Review(

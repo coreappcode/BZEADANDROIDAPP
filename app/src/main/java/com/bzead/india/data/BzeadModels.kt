@@ -67,5 +67,9 @@ data class Product(
     val stockCount: Int = 0,
     val description: String = "",
     val variants: List<ProductVariant> = emptyList(),
+    val sellerId: String = "",
+    val originCountry: String = "",
+    val shipsInternationally: Boolean = false,
+    val images: List<String> = emptyList(),
     val specifications: Map<String, String> = emptyMap()
 )
