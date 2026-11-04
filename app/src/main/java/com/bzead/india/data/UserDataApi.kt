@@ -5,6 +5,9 @@ import com.bzead.india.model.DeliveryAddress
 import com.bzead.india.model.NotificationItem
 import com.bzead.india.model.Order
 import com.bzead.india.model.OrderItem
+import com.bzead.india.model.OrderStatusHistoryRecord
+import com.bzead.india.model.OrderReturnRecord
+import com.bzead.india.model.OrderTrackingEvent
 import com.bzead.india.model.OrderStatus
 import org.json.JSONArray
 import org.json.JSONObject
@@ -138,9 +141,10 @@ internal object UserDataApi {
     suspend fun fetchWishlist(token: String, userId: String): List<Product>? {
         val res = SupabaseRest.request("GET", "wishlists?select=*,products(*)&user_id=eq.$userId", token)
         if (!res.ok) return null
-        return res.rows.objects().mapIndexedNotNull { i, row ->
+        val products = res.rows.objects().mapIndexedNotNull { i, row ->
             row.optJSONObject("products")?.let { SupabaseClient.parseProduct(it, i) }
         }
+        return SupabaseClient.withPublicPrices(products)
     }
 
     suspend fun addWishlist(token: String, userId: String, productIds: Collection<String>): RestResult {
@@ -292,6 +296,7 @@ internal object UserDataApi {
             val qty = it.optInt("quantity", 1)
             val unit = it.num("customer_unit_price") ?: it.num("price") ?: 0.0
             val image = it.str("product_image") ?: it.str("image_url").orEmpty()
+            val variant = it.optJSONObject("variant_info")
             OrderItem(
                 product = Product(
                     id = it.str("product_id") ?: it.optString("id"),
@@ -303,7 +308,13 @@ internal object UserDataApi {
                 ),
                 quantity = qty,
                 unitPrice = unit,
-                totalPrice = it.num("customer_line_total") ?: (unit * qty)
+                totalPrice = it.num("customer_line_total") ?: (unit * qty),
+                id = it.str("id").orEmpty(),
+                sellerId = it.str("seller_id"),
+                selectedSize = variant?.str("size"),
+                selectedColor = variant?.str("color"),
+                variantSku = variant?.str("sku"),
+                hsnCode = variant?.str("hsn_code")
             )
         }
         val total = o.num("total_amount") ?: 0.0
@@ -331,7 +342,8 @@ internal object UserDataApi {
             trackingNumber = o.str("tracking_number") ?: shipment?.str("awb_number").orEmpty(),
             estimatedDeliveryDate = etd,
             paymentMethod = o.str("payment_method").orEmpty(),
-            paymentStatus = o.str("payment_status").orEmpty()
+            paymentStatus = o.str("payment_status").orEmpty(),
+            paymentIntentId = o.str("payment_intent_id").orEmpty()
         )
     }
 
@@ -357,6 +369,140 @@ internal object UserDataApi {
         return rows.map { parseOrder(it, latest[it.optString("id")]) }
     }
 
+    suspend fun fetchOrderTrackingEvents(token: String, orderId: String): List<OrderTrackingEvent> {
+        val shipments = SupabaseRest.request(
+            "GET", "shiprocket_shipments?select=id&order_id=eq.$orderId&order=created_at.desc", token
+        )
+        if (!shipments.ok) return emptyList()
+        val ids = shipments.rows.objects().mapNotNull { it.str("id") }
+        if (ids.isEmpty()) return emptyList()
+        val events = SupabaseRest.request(
+            "GET",
+            "shiprocket_tracking_events?select=id,shipment_id,sr_status,sr_status_label,activity,location,event_at" +
+                "&shipment_id=in.${SupabaseRest.enc(SupabaseRest.inList(ids))}&order=event_at.desc",
+            token
+        )
+        if (!events.ok) return emptyList()
+        return events.rows.objects().map {
+            OrderTrackingEvent(
+                id = it.optString("id"),
+                status = it.str("sr_status_label") ?: it.str("sr_status").orEmpty(),
+                statusCode = it.str("sr_status").orEmpty(),
+                location = it.str("location").orEmpty(),
+                eventAt = it.str("event_at").orEmpty(),
+                remarks = it.str("activity").orEmpty()
+            )
+        }
+    }
+
+    suspend fun fetchOrderReturns(token: String, orderId: String): List<OrderReturnRecord> {
+        val res = SupabaseRest.request(
+            "GET", "order_returns?select=id,status,reason,description,created_at&order_id=eq.$orderId&order=created_at.desc", token
+        )
+        if (!res.ok) return emptyList()
+        return res.rows.objects().map {
+            OrderReturnRecord(it.optString("id"), it.str("status").orEmpty(), it.str("reason").orEmpty(), it.str("description").orEmpty(), it.str("created_at").orEmpty())
+        }
+    }
+
+    suspend fun fetchOrderStatusHistory(token: String, orderId: String): List<OrderStatusHistoryRecord> {
+        val res = SupabaseRest.request(
+            "GET", "order_status_history?select=id,from_status,to_status,note,created_at&order_id=eq.$orderId&order=created_at.desc", token
+        )
+        if (!res.ok) return emptyList()
+        return res.rows.objects().map {
+            OrderStatusHistoryRecord(it.optString("id"), it.str("from_status").orEmpty(), it.str("to_status").orEmpty(), it.str("note").orEmpty(), it.str("created_at").orEmpty())
+        }
+    }
+
+    // ------------------------------------------------------ order actions
+
+    suspend fun cancelBuyerOrder(token: String, orderId: String, reason: String): String? {
+        val res = SupabaseRest.request(
+            "POST",
+            "rpc/cancel_order_by_user",
+            token,
+            JSONObject().put("p_order_id", orderId).put("p_reason", reason).toString()
+        )
+        if (!res.ok) return res.error ?: "Failed to cancel order"
+        val result = res.rows.objects().firstOrNull()
+        return if (result?.optBoolean("success", false) == true) null
+        else result?.str("error") ?: "Cancellation failed"
+    }
+
+    suspend fun requestOrderReturn(
+        token: String,
+        userId: String,
+        orderId: String,
+        orderItemId: String?,
+        reason: String,
+        description: String,
+        quantity: Int
+    ): Pair<String?, String?> {
+        val orderResult = SupabaseRest.request(
+            "GET", "orders?select=id,status&id=eq.$orderId&user_id=eq.$userId", token
+        )
+        val order = orderResult.rows.objects().firstOrNull()
+        if (!orderResult.ok || order == null) return Pair(null, orderResult.error ?: "Order not found")
+        val status = order.str("status") ?: ""
+        if (status != "delivered") return Pair(null, "Cannot return order in \"$status\" status")
+
+        val body = JSONObject()
+            .put("order_id", orderId)
+            .put("order_item_id", orderItemId?.takeIf { it.isNotBlank() } ?: JSONObject.NULL)
+            .put("user_id", userId)
+            .put("reason", reason)
+            .put("description", description.takeIf { it.isNotBlank() } ?: JSONObject.NULL)
+            .put("quantity", quantity.coerceAtLeast(1))
+            .put("images", JSONArray())
+            .put("status", "requested")
+        val inserted = SupabaseRest.request("POST", "order_returns", token, body.toString(), prefer = "return=representation")
+        val returnRow = inserted.rows.objects().firstOrNull()
+        if (!inserted.ok || returnRow == null) return Pair(null, inserted.error ?: "Failed to submit return request")
+
+        SupabaseRest.request(
+            "PATCH", "orders?id=eq.$orderId", token,
+            JSONObject().put("status", "return_requested").toString(), prefer = "return=minimal"
+        )
+        SupabaseRest.request(
+            "POST", "order_status_history", token,
+            JSONObject()
+                .put("order_id", orderId)
+                .put("from_status", status)
+                .put("to_status", "return_requested")
+                .put("changed_by", userId)
+                .put("role", "buyer")
+                .put("note", "Return requested: $reason")
+                .toString(),
+            prefer = "return=minimal"
+        )
+        return Pair(returnRow.str("id"), null)
+    }
+
+    suspend fun deleteNotification(token: String, userId: String, id: String): RestResult =
+        SupabaseRest.request("DELETE", "notifications?id=eq.$id&user_id=eq.$userId", token)
+
+    suspend fun createBuyerOrderNotification(
+        token: String,
+        userId: String,
+        type: String,
+        title: String,
+        message: String,
+        orderId: String,
+        orderNumber: String,
+        returnId: String? = null
+    ): RestResult {
+        val metadata = JSONObject().put("order_id", orderId).put("order_number", orderNumber)
+        returnId?.let { metadata.put("return_id", it) }
+        val body = JSONObject()
+            .put("user_id", userId)
+            .put("type", type)
+            .put("title", title)
+            .put("message", message)
+            .put("metadata", metadata)
+        return SupabaseRest.request("POST", "notifications", token, body.toString(), prefer = "return=minimal")
+    }
+
     // --------------------------------------------------------- notifications
 
     private fun relativeTime(raw: String?): String {
@@ -364,10 +510,10 @@ internal object UserDataApi {
         val diff = (System.currentTimeMillis() - d.time) / 1000
         return when {
             diff < 60 -> "Just now"
-            diff < 3600 -> "${diff / 60} min ago"
-            diff < 86400 -> "${diff / 3600} hr ago"
-            diff < 7 * 86400 -> "${diff / 86400} day ago"
-            else -> SimpleDateFormat("dd/MM/yyyy", Locale.US).format(d)
+            diff < 3600 -> "${diff / 60}m ago"
+            diff < 86400 -> "${diff / 3600}h ago"
+            diff < 7 * 86400 -> "${diff / 86400}d ago"
+            else -> SimpleDateFormat("d MMM", Locale.US).format(d)
         }
     }
 
@@ -387,7 +533,8 @@ internal object UserDataApi {
                 message = it.optString("message"),
                 timestamp = relativeTime(it.str("created_at")),
                 isRead = it.optBoolean("is_read", false),
-                orderId = it.optJSONObject("metadata")?.str("order_id")
+                orderId = it.optJSONObject("metadata")?.str("order_id"),
+                extra = it.optJSONObject("metadata")?.str("tracking_number")?.let { number -> "Tracking: $number" }
             )
         }
         return Pair(rows.size, visible)

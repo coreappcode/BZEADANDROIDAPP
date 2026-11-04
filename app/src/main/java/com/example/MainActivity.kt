@@ -8,6 +8,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -24,6 +25,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
@@ -60,6 +63,9 @@ import com.bzead.india.ui.screens.WriteReviewScreen
 import com.bzead.india.ui.screens.SettingsScreen
 import com.bzead.india.ui.screens.SectionProductsScreen
 import com.bzead.india.ui.screens.ContactScreen
+import com.bzead.india.ui.screens.NotFoundScreen
+import com.bzead.india.ui.screens.OfflineScreen
+import com.bzead.india.ui.screens.rememberNetworkStatus
 
 sealed class AppScreen {
     data object Splash : AppScreen()
@@ -89,6 +95,77 @@ sealed class AppScreen {
     data object Settings : AppScreen()
     data class SectionProducts(val sectionId: String) : AppScreen()
     data object Contact : AppScreen()
+    data object NotFound : AppScreen()
+}
+
+private fun AppScreen.toSavedRoute(): ArrayList<String> = ArrayList(when (this) {
+    AppScreen.Splash -> listOf("splash")
+    AppScreen.Home -> listOf("home")
+    AppScreen.Category -> listOf("category")
+    is AppScreen.CategoryDetail -> listOf("category-detail", categoryId)
+    AppScreen.Cart -> listOf("cart")
+    AppScreen.Profile -> listOf("profile")
+    AppScreen.Search -> listOf("search")
+    is AppScreen.ProductDetail -> listOf("product-detail", productId)
+    AppScreen.Wishlist -> listOf("wishlist")
+    AppScreen.Orders -> listOf("orders")
+    is AppScreen.OrderDetail -> listOf("order-detail", orderId)
+    is AppScreen.OrderSuccess -> listOf("order-success", orderId)
+    AppScreen.ShippingAddress -> listOf("shipping-address")
+    AppScreen.OrderSummary -> listOf("order-summary")
+    AppScreen.Checkout -> listOf("checkout")
+    AppScreen.Login -> listOf("login")
+    AppScreen.Signup -> listOf("signup")
+    is AppScreen.OTPVerification -> listOf("otp", email, fullName, purpose)
+    is AppScreen.NewPassword -> listOf("new-password", email, code)
+    AppScreen.ForgotPassword -> listOf("forgot-password")
+    AppScreen.Notifications -> listOf("notifications")
+    is AppScreen.Policy -> listOf("policy", type)
+    AppScreen.AddressManagement -> listOf("address-management")
+    is AppScreen.WriteReview -> listOf("write-review", productId)
+    AppScreen.Settings -> listOf("settings")
+    is AppScreen.SectionProducts -> listOf("section-products", sectionId)
+    AppScreen.Contact -> listOf("contact")
+    AppScreen.NotFound -> listOf("not-found")
+})
+
+private fun List<String>.toAppScreen(): AppScreen = when (firstOrNull()) {
+    "splash" -> AppScreen.Splash
+    "category" -> AppScreen.Category
+    "category-detail" -> getOrNull(1)?.let { AppScreen.CategoryDetail(it) } ?: AppScreen.Home
+    "cart" -> AppScreen.Cart
+    "profile" -> AppScreen.Profile
+    "search" -> AppScreen.Search
+    "product-detail" -> getOrNull(1)?.let { AppScreen.ProductDetail(it) } ?: AppScreen.Home
+    "wishlist" -> AppScreen.Wishlist
+    "orders" -> AppScreen.Orders
+    "order-detail" -> getOrNull(1)?.let { AppScreen.OrderDetail(it) } ?: AppScreen.Home
+    "order-success" -> getOrNull(1)?.let { AppScreen.OrderSuccess(it) } ?: AppScreen.Home
+    "shipping-address" -> AppScreen.ShippingAddress
+    "order-summary" -> AppScreen.OrderSummary
+    "checkout" -> AppScreen.Checkout
+    "login" -> AppScreen.Login
+    "signup" -> AppScreen.Signup
+    "otp" -> getOrNull(1)?.let { AppScreen.OTPVerification(it, getOrNull(2).orEmpty(), getOrNull(3) ?: "signup") } ?: AppScreen.Login
+    "new-password" -> if (size >= 3) AppScreen.NewPassword(this[1], this[2]) else AppScreen.ForgotPassword
+    "forgot-password" -> AppScreen.ForgotPassword
+    "notifications" -> AppScreen.Notifications
+    "policy" -> getOrNull(1)?.let { AppScreen.Policy(it) } ?: AppScreen.Home
+    "address-management" -> AppScreen.AddressManagement
+    "write-review" -> getOrNull(1)?.let { AppScreen.WriteReview(it) } ?: AppScreen.Home
+    "settings" -> AppScreen.Settings
+    "section-products" -> getOrNull(1)?.let { AppScreen.SectionProducts(it) } ?: AppScreen.Home
+    "contact" -> AppScreen.Contact
+    "not-found" -> AppScreen.NotFound
+    else -> AppScreen.Home
+}
+
+private fun AppScreen.requiresBuyerAuth(): Boolean = when (this) {
+    AppScreen.Cart, AppScreen.Checkout, AppScreen.Orders, AppScreen.Wishlist,
+    AppScreen.Notifications, AppScreen.Profile, AppScreen.ShippingAddress,
+    AppScreen.OrderSummary, AppScreen.AddressManagement, AppScreen.Settings,
+    is AppScreen.OrderDetail, is AppScreen.OrderSuccess, is AppScreen.WriteReview -> true
+    else -> false
 }
 
 class MainActivity : ComponentActivity(), com.razorpay.PaymentResultWithDataListener {
@@ -115,11 +192,40 @@ class MainActivity : ComponentActivity(), com.razorpay.PaymentResultWithDataList
                     }
                 }
 
-                var currentScreen by remember { mutableStateOf<AppScreen>(AppScreen.Splash) }
+                val appScreenSaver = remember {
+                    Saver<AppScreen, ArrayList<String>>(
+                        save = { it.toSavedRoute() },
+                        restore = { it.toAppScreen() }
+                    )
+                }
+                val nullableAppScreenSaver = remember {
+                    Saver<AppScreen?, ArrayList<String>>(
+                        save = { it?.toSavedRoute() },
+                        restore = { it?.toAppScreen() }
+                    )
+                }
+                var currentScreen by rememberSaveable(stateSaver = appScreenSaver) {
+                    mutableStateOf<AppScreen>(AppScreen.Splash)
+                }
+                var pendingLoginDestination by rememberSaveable(stateSaver = nullableAppScreenSaver) {
+                    mutableStateOf<AppScreen?>(null)
+                }
+                var loginSuccessMessage by remember { mutableStateOf<String?>(null) }
                 val snackbarHostState = remember { SnackbarHostState() }
                 val cartItems by BzeadRepository.cartItems.collectAsState()
                 val cartCount = cartItems.sumOf { it.quantity }
                 val isLoggedIn by BzeadRepository.isLoggedIn.collectAsState()
+                val authLoading by BzeadRepository.isAuthLoading.collectAsState()
+
+                androidx.compose.runtime.LaunchedEffect(currentScreen, isLoggedIn, authLoading) {
+                    if (authLoading) return@LaunchedEffect
+                    if (!isLoggedIn && currentScreen.requiresBuyerAuth()) {
+                        pendingLoginDestination = currentScreen
+                        currentScreen = AppScreen.Login
+                    } else if (isLoggedIn && (currentScreen == AppScreen.Login || currentScreen == AppScreen.Signup)) {
+                        currentScreen = AppScreen.Home
+                    }
+                }
 
                 val currentBottomTab = when (currentScreen) {
                     AppScreen.Home -> BottomTab.HOME
@@ -159,7 +265,9 @@ class MainActivity : ComponentActivity(), com.razorpay.PaymentResultWithDataList
                             parts.size == 1 && parts[0] == "terms-and-conditions" -> currentScreen = AppScreen.Policy("terms")
                             parts.size == 1 && parts[0] == "terms-of-service" -> currentScreen = AppScreen.Policy("terms-of-service")
                             parts.size == 1 && parts[0] == "about" -> currentScreen = AppScreen.Policy("about")
+                            parts.size == 1 && parts[0] == "not-found" -> currentScreen = AppScreen.NotFound
                             parts.size == 1 && (parts[0] == "all-categories" || parts[0].isEmpty()) -> currentScreen = AppScreen.Home
+                            else -> currentScreen = AppScreen.NotFound
                         }
                     } else if (link.startsWith("http://") || link.startsWith("https://")) {
                         try {
@@ -173,6 +281,8 @@ class MainActivity : ComponentActivity(), com.razorpay.PaymentResultWithDataList
                     currentScreen = AppScreen.Home
                 }
 
+                val networkStatus = rememberNetworkStatus()
+                Box(modifier = Modifier.fillMaxSize()) {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     containerColor = BzeadHeaderNavy,
@@ -242,7 +352,8 @@ class MainActivity : ComponentActivity(), com.razorpay.PaymentResultWithDataList
                                         onNavigateToSearch = { currentScreen = AppScreen.Search },
                                         onNavigateToCart = { currentScreen = AppScreen.Cart },
                                         onNavigateToWishlist = { currentScreen = AppScreen.Wishlist },
-                                        snackbarHostState = snackbarHostState
+                                        snackbarHostState = snackbarHostState,
+                                        isCategoryPage = true
                                     )
                                 }
                                 is AppScreen.Category -> {
@@ -287,6 +398,10 @@ class MainActivity : ComponentActivity(), com.razorpay.PaymentResultWithDataList
                                         onNavigateToContact = { currentScreen = AppScreen.Contact },
                                         onNavigateToLogin = { currentScreen = AppScreen.Login },
                                         onNavigateToSignup = { currentScreen = AppScreen.Signup },
+                                        onNavigateToHome = {
+                                            pendingLoginDestination = null
+                                            currentScreen = AppScreen.Home
+                                        },
                                         snackbarHostState = snackbarHostState
                                     )
                                 }
@@ -334,7 +449,8 @@ class MainActivity : ComponentActivity(), com.razorpay.PaymentResultWithDataList
                                         sectionId = screen.sectionId,
                                         onNavigateBack = { currentScreen = AppScreen.Home },
                                         onProductClick = { id -> currentScreen = AppScreen.ProductDetail(id) },
-                                        onNavigateToLogin = { currentScreen = AppScreen.Login }
+                                        onNavigateToLogin = { currentScreen = AppScreen.Login },
+                                        onNavigateToSearch = { currentScreen = AppScreen.Search }
                                     )
                                 }
                                 is AppScreen.Contact -> {
@@ -346,7 +462,8 @@ class MainActivity : ComponentActivity(), com.razorpay.PaymentResultWithDataList
                                     WishlistScreen(
                                         onNavigateToHome = { currentScreen = AppScreen.Home },
                                         onNavigateToProduct = { id -> currentScreen = AppScreen.ProductDetail(id) },
-                                        snackbarHostState = snackbarHostState
+                                        snackbarHostState = snackbarHostState,
+                                        onNavigateToLogin = { currentScreen = AppScreen.Login }
                                     )
                                 }
                                 is AppScreen.Checkout -> {
@@ -359,13 +476,16 @@ class MainActivity : ComponentActivity(), com.razorpay.PaymentResultWithDataList
                                     OrderSuccessScreen(
                                         orderId = screen.orderId,
                                         onViewOrder = { orderId -> currentScreen = AppScreen.OrderDetail(orderId) },
-                                        onContinueShopping = { currentScreen = AppScreen.Home }
+                                        onContinueShopping = { currentScreen = AppScreen.Home },
+                                        onViewOrders = { currentScreen = AppScreen.Orders },
+                                        onContactSupport = { currentScreen = AppScreen.Contact }
                                     )
                                 }
                                 is AppScreen.Orders -> {
                                     OrdersScreen(
                                         onNavigateBack = { currentScreen = AppScreen.Profile },
-                                        onNavigateToOrderDetail = { id -> currentScreen = AppScreen.OrderDetail(id) }
+                                        onNavigateToOrderDetail = { id -> currentScreen = AppScreen.OrderDetail(id) },
+                                        onNavigateToLogin = { currentScreen = AppScreen.Login }
                                     )
                                 }
                                 is AppScreen.OrderDetail -> {
@@ -377,10 +497,24 @@ class MainActivity : ComponentActivity(), com.razorpay.PaymentResultWithDataList
                                 }
                                 is AppScreen.Login -> {
                                     LoginScreen(
-                                        onNavigateBack = { currentScreen = AppScreen.Home },
-                                        onNavigateToSignup = { currentScreen = AppScreen.Signup },
-                                        onNavigateToForgotPassword = { currentScreen = AppScreen.ForgotPassword },
-                                        onLoginSuccess = { currentScreen = AppScreen.Home }
+                                        onNavigateBack = {
+                                            pendingLoginDestination = null
+                                            currentScreen = AppScreen.Home
+                                        },
+                                        onNavigateToSignup = {
+                                            pendingLoginDestination = null
+                                            currentScreen = AppScreen.Signup
+                                        },
+                                        onNavigateToForgotPassword = {
+                                            pendingLoginDestination = null
+                                            currentScreen = AppScreen.ForgotPassword
+                                        },
+                                        onLoginSuccess = {
+                                            currentScreen = pendingLoginDestination ?: AppScreen.Home
+                                            pendingLoginDestination = null
+                                            loginSuccessMessage = null
+                                        },
+                                        initialSuccessMessage = loginSuccessMessage
                                     )
                                 }
                                 is AppScreen.Signup -> {
@@ -394,14 +528,18 @@ class MainActivity : ComponentActivity(), com.razorpay.PaymentResultWithDataList
                                     OTPVerificationScreen(
                                         email = screen.email,
                                         purpose = screen.purpose,
-                                        onNavigateBack = { currentScreen = AppScreen.Login },
+                                        onNavigateBack = {
+                                            currentScreen = if (screen.purpose == "password-reset") AppScreen.ForgotPassword else AppScreen.Signup
+                                        },
                                         onVerificationSuccess = { currentScreen = AppScreen.Home },
-                                        onResetCodeEntered = { code -> currentScreen = AppScreen.NewPassword(screen.email, code) }
+                                        onNavigateHome = { currentScreen = AppScreen.Home },
+                                        onResetCodeEntered = { code -> currentScreen = AppScreen.NewPassword(screen.email, code) },
+                                        onAlreadyConfirmed = { currentScreen = AppScreen.Login }
                                     )
                                 }
                                 is AppScreen.ForgotPassword -> {
                                     ForgotPasswordScreen(
-                                        onNavigateBack = { currentScreen = AppScreen.Login },
+                                        onNavigateBack = { currentScreen = AppScreen.Home },
                                         onNavigateToLogin = { currentScreen = AppScreen.Login },
                                         onNavigateToOtp = { email -> currentScreen = AppScreen.OTPVerification(email, purpose = "password-reset") }
                                     )
@@ -411,24 +549,42 @@ class MainActivity : ComponentActivity(), com.razorpay.PaymentResultWithDataList
                                         email = screen.email,
                                         code = screen.code,
                                         onNavigateBack = { currentScreen = AppScreen.OTPVerification(screen.email, purpose = "password-reset") },
-                                        onPasswordReset = { currentScreen = AppScreen.Login }
+                                        onPasswordReset = {
+                                            loginSuccessMessage = "Password reset successfully! Please login with your new password."
+                                            currentScreen = AppScreen.Login
+                                        },
+                                        onNavigateHome = { currentScreen = AppScreen.Home }
                                     )
                                 }
                                 is AppScreen.Notifications -> {
                                     NotificationsScreen(
                                         onNavigateBack = { currentScreen = AppScreen.Home },
-                                        onNavigateToOrder = { id -> currentScreen = AppScreen.OrderDetail(id) }
+                                        onNavigateToOrder = { id -> currentScreen = AppScreen.OrderDetail(id) },
+                                        onNavigateToLogin = { currentScreen = AppScreen.Login }
+                                    )
+                                }
+                                is AppScreen.NotFound -> {
+                                    NotFoundScreen(
+                                        onGoHome = { currentScreen = AppScreen.Home },
+                                        onGoBack = { currentScreen = AppScreen.Home }
                                     )
                                 }
                                 is AppScreen.Policy -> {
                                     PolicyScreen(
                                         policyType = screen.type,
-                                        onNavigateBack = { currentScreen = AppScreen.Profile }
+                                        onNavigateBack = { currentScreen = AppScreen.Profile },
+                                        onNavigateHome = { currentScreen = AppScreen.Home }
                                     )
                                 }
                             }
                         }
                     }
+                }
+                if (!networkStatus.isOnline) {
+                    Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF1E293B)) {
+                        OfflineScreen(onRetry = networkStatus.refresh)
+                    }
+                }
                 }
             }
         }

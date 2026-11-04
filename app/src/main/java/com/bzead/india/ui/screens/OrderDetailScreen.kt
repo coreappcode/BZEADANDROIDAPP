@@ -1,5 +1,10 @@
 package com.bzead.india.ui.screens
 
+import android.net.Uri
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -12,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -26,16 +32,19 @@ import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.RateReview
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -46,6 +55,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,6 +64,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -60,12 +72,25 @@ import androidx.compose.ui.unit.sp
 import com.bzead.india.data.BzeadRepository
 import com.bzead.india.model.Order
 import com.bzead.india.model.OrderStatus
+import com.bzead.india.model.OrderTrackingEvent
+import com.bzead.india.model.OrderReturnRecord
+import com.bzead.india.model.OrderStatusHistoryRecord
 import com.bzead.india.theme.BzeadAccent
 import com.bzead.india.theme.BzeadPrimary
 import com.bzead.india.theme.BzeadSuccess
 import com.bzead.india.theme.TextPrimary
 import com.bzead.india.theme.TextSecondary
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+private fun formatTrackingTime(raw: String): String = runCatching {
+    val input = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US).apply {
+        timeZone = java.util.TimeZone.getTimeZone("UTC")
+    }
+    val date = input.parse(raw.replace(' ', 'T').take(19)) ?: return@runCatching raw
+    java.text.SimpleDateFormat("dd MMM yyyy, hh:mm a", java.util.Locale.getDefault()).format(date)
+}.getOrDefault(raw)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -77,12 +102,59 @@ fun OrderDetailScreen(
 ) {
     val orders by BzeadRepository.orders.collectAsState()
     val order = orders.find { it.id == orderId } ?: BzeadRepository.findOrder(orderId)
-    LaunchedEffect(orderId) { BzeadRepository.refreshOrders() }
+    var pageLoading by remember(orderId) { mutableStateOf(true) }
+    var trackingEvents by remember(orderId) { mutableStateOf<List<OrderTrackingEvent>>(emptyList()) }
+    var orderReturns by remember(orderId) { mutableStateOf<List<OrderReturnRecord>>(emptyList()) }
+    var statusHistory by remember(orderId) { mutableStateOf<List<OrderStatusHistoryRecord>>(emptyList()) }
+    LaunchedEffect(orderId) {
+        try {
+            BzeadRepository.refreshOrdersNow()
+            trackingEvents = BzeadRepository.fetchOrderTrackingEvents(orderId)
+            orderReturns = BzeadRepository.fetchOrderReturns(orderId)
+            statusHistory = BzeadRepository.fetchOrderStatusHistory(orderId)
+        } finally {
+            pageLoading = false
+        }
+    }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    var showCancelDialog by remember(orderId) { mutableStateOf(false) }
+    var showReturnDialog by remember(orderId) { mutableStateOf(false) }
+    var returnItemId by remember(orderId) { mutableStateOf<String?>(null) }
+    var cancelReason by remember(orderId) { mutableStateOf("") }
+    var returnReason by remember(orderId) { mutableStateOf("") }
+    var returnDescription by remember(orderId) { mutableStateOf("") }
+    var actionError by remember(orderId) { mutableStateOf<String?>(null) }
+    var actionLoading by remember(orderId) { mutableStateOf(false) }
+    var invoiceOrder by remember(orderId) { mutableStateOf<Order?>(null) }
+    var activeTab by remember(orderId) { mutableStateOf("items") }
+    val invoiceLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri: Uri? ->
+        val selectedOrder = invoiceOrder
+        if (uri != null && selectedOrder != null) {
+            scope.launch {
+                try {
+                    withContext(Dispatchers.IO) {
+                        val output = context.contentResolver.openOutputStream(uri)
+                            ?: error("Could not open invoice file")
+                        output.use { it.write(OrderInvoicePdf.create(selectedOrder, BzeadRepository.userName.value.orEmpty(), BzeadRepository.userEmail.value.orEmpty())) }
+                    }
+                    snackbarHostState.showSnackbar("Invoice downloaded")
+                } catch (_: Exception) {
+                    snackbarHostState.showSnackbar("Failed to generate invoice")
+                }
+            }
+        }
+        invoiceOrder = null
+    }
 
     if (order == null) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("Order not found")
+            if (pageLoading) CircularProgressIndicator(color = BzeadPrimary)
+            else Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Order Not Found", fontWeight = FontWeight.Bold, color = TextPrimary)
+                Spacer(Modifier.height(12.dp))
+                TextButton(onClick = onNavigateBack) { Text("Back to Orders") }
+            }
         }
         return
     }
@@ -115,6 +187,35 @@ fun OrderDetailScreen(
             )
         )
 
+        Row(
+            modifier = Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 10.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            listOf("items" to "Items", "tracking" to "Tracking", "invoice" to "Invoice").forEach { (key, label) ->
+                TextButton(onClick = { activeTab = key }) {
+                    Text(label, color = if (activeTab == key) Color(0xFFD97706) else TextSecondary,
+                        fontWeight = if (activeTab == key) FontWeight.Bold else FontWeight.Medium)
+                }
+            }
+        }
+        if (order.status in setOf(OrderStatus.PENDING, OrderStatus.PROCESSING, OrderStatus.ACCEPTED) || order.status == OrderStatus.DELIVERED) {
+            Row(
+                modifier = Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                if (order.status in setOf(OrderStatus.PENDING, OrderStatus.PROCESSING, OrderStatus.ACCEPTED)) {
+                    OutlinedButton(onClick = { showCancelDialog = true; actionError = null }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(8.dp)) {
+                        Text("Cancel Order", color = Color(0xFFDC2626))
+                    }
+                }
+                if (order.status == OrderStatus.DELIVERED) {
+                    OutlinedButton(onClick = { returnItemId = null; showReturnDialog = true; actionError = null }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(8.dp)) {
+                        Text("Return / Refund", color = Color(0xFFEA580C))
+                    }
+                }
+            }
+        }
+
         Column(
             modifier = Modifier
                 .weight(1f)
@@ -122,6 +223,7 @@ fun OrderDetailScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            if (activeTab == "tracking") {
             // Tracking Status Card
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -230,9 +332,50 @@ fun OrderDetailScreen(
                         )
                         TrackingStep(title = "Delivered", desc = "", isDone = st == OrderStatus.DELIVERED, isLast = true)
                     }
+                    if (order.trackingNumber.isNotBlank() && order.trackingNumber != "N/A") {
+                        Spacer(Modifier.height(8.dp))
+                        Button(
+                            onClick = {
+                                runCatching {
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://shiprocket.co/tracking/${order.trackingNumber}")))
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = BzeadPrimary)
+                        ) { Text("Track Package") }
+                    }
+                    if (trackingEvents.isNotEmpty()) {
+                        Divider(Modifier.padding(vertical = 12.dp), color = Color(0xFFE2E8F0))
+                        Text("Tracking Updates", fontWeight = FontWeight.Bold, color = TextPrimary)
+                        trackingEvents.forEach { event ->
+                            Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalAlignment = Alignment.Top) {
+                                Box(Modifier.padding(top = 4.dp).size(8.dp).clip(CircleShape).background(BzeadPrimary))
+                                Spacer(Modifier.width(10.dp))
+                                Column {
+                                    Text(event.status.ifBlank { event.statusCode }, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = TextPrimary)
+                                    if (event.remarks.isNotBlank()) Text(event.remarks, fontSize = 11.sp, color = TextSecondary)
+                                    if (event.location.isNotBlank()) Text(event.location, fontSize = 11.sp, color = TextSecondary)
+                                    if (event.eventAt.isNotBlank()) Text(formatTrackingTime(event.eventAt), fontSize = 10.sp, color = TextSecondary)
+                                }
+                            }
+                        }
+                    }
+                    if (statusHistory.isNotEmpty()) {
+                        Divider(Modifier.padding(vertical = 12.dp), color = Color(0xFFE2E8F0))
+                        Text("Order Status History", fontWeight = FontWeight.Bold, color = TextPrimary)
+                        statusHistory.forEach { event ->
+                            Text(
+                                text = listOf(event.fromStatus, event.toStatus).filter(String::isNotBlank).joinToString(" → ") +
+                                    event.note.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty(),
+                                modifier = Modifier.padding(top = 8.dp), fontSize = 11.sp, color = TextSecondary
+                            )
+                        }
+                    }
                 }
             }
 
+            }
+
+            if (activeTab == "items") {
             // Items in this order
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -291,6 +434,22 @@ fun OrderDetailScreen(
                                     fontSize = 12.sp,
                                     color = TextSecondary
                                 )
+                                if (!item.selectedSize.isNullOrBlank() || !item.selectedColor.isNullOrBlank()) {
+                                    Text(
+                                        text = listOfNotNull(
+                                            item.selectedSize?.takeIf { it.isNotBlank() }?.let { "Size: $it" },
+                                            item.selectedColor?.takeIf { it.isNotBlank() }?.let { "Color: $it" }
+                                        ).joinToString(" • "),
+                                        fontSize = 11.sp,
+                                        color = TextSecondary
+                                    )
+                                }
+                                if (order.status == OrderStatus.DELIVERED) {
+                                    TextButton(
+                                        onClick = { returnItemId = item.id.takeIf { it.isNotBlank() }; showReturnDialog = true; actionError = null },
+                                        contentPadding = PaddingValues(0.dp)
+                                    ) { Text("Return", fontSize = 11.sp, color = BzeadAccent) }
+                                }
                             }
                             Text(
                                 text = "₹${item.totalPrice.toInt()}",
@@ -388,42 +547,140 @@ fun OrderDetailScreen(
                     }
                 }
             }
-
-            // Action Buttons
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                OutlinedButton(
-                    onClick = {
-                        scope.launch {
-                            snackbarHostState.showSnackbar("Tax Invoice downloaded for ${order.orderNumber}")
-                        }
-                    },
-                    modifier = Modifier.weight(1f).testTag("download_invoice_btn"),
-                    shape = RoundedCornerShape(8.dp)
+            if (orderReturns.isNotEmpty()) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
-                    Icon(imageVector = Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Tax Invoice", fontSize = 12.sp)
-                }
-
-                Button(
-                    onClick = {
-                        scope.launch {
-                            snackbarHostState.showSnackbar("Connecting to BZEAD Customer Support...")
+                    Column(Modifier.padding(16.dp)) {
+                        Text("Return Requests", fontWeight = FontWeight.Bold, color = TextPrimary)
+                        orderReturns.forEach { request ->
+                            Divider(Modifier.padding(vertical = 8.dp), color = Color(0xFFE2E8F0))
+                            Text("${request.status.replaceFirstChar { it.uppercase() }} · ${request.reason}", fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = TextPrimary)
+                            if (request.description.isNotBlank()) Text(request.description, fontSize = 11.sp, color = TextSecondary)
                         }
-                    },
-                    modifier = Modifier.weight(1f).testTag("need_help_btn"),
-                    colors = ButtonDefaults.buttonColors(containerColor = BzeadPrimary),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Icon(imageVector = Icons.Default.HelpOutline, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Need Help?", fontSize = 12.sp)
+                    }
                 }
             }
+
+            }
+
+            if (activeTab == "invoice") {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text("Invoice", fontWeight = FontWeight.Bold, color = TextPrimary, fontSize = 17.sp)
+                        Spacer(Modifier.height(10.dp))
+                        PriceSummaryRow(label = "Order ID", value = order.orderNumber)
+                        PriceSummaryRow(label = "Payment Status", value = order.paymentStatus.ifBlank { "pending" })
+                        PriceSummaryRow(label = "Payment Mode", value = order.paymentMethod.ifBlank { "-" })
+                        PriceSummaryRow(label = "Items Subtotal", value = "₹${order.subtotal.toInt()}")
+                        PriceSummaryRow(label = "Delivery Charges", value = if (order.shippingFee == 0.0) "FREE" else "₹${order.shippingFee.toInt()}")
+                        if (order.additionalCharges > 0) PriceSummaryRow(label = "Additional Charges", value = "₹${order.additionalCharges.toInt()}")
+                        Divider(Modifier.padding(vertical = 10.dp), color = Color(0xFFE2E8F0))
+                        PriceSummaryRow(label = "Total Paid", value = "₹${order.totalAmount.toInt()}")
+                        Spacer(Modifier.height(14.dp))
+                        Button(
+                            onClick = {
+                                invoiceOrder = order
+                                invoiceLauncher.launch("BZEAD_${order.orderNumber}.pdf")
+                            },
+                            modifier = Modifier.fillMaxWidth().height(48.dp).testTag("download_invoice_btn"),
+                            colors = ButtonDefaults.buttonColors(containerColor = BzeadPrimary),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Icon(imageVector = Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Download Invoice (PDF)", fontSize = 13.sp)
+                        }
+                    }
+                }
+            }
+            TextButton(onClick = onNavigateBack, modifier = Modifier.fillMaxWidth()) {
+                Text("Back to Orders")
+            }
         }
+    }
+
+    if (showCancelDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!actionLoading) { showCancelDialog = false; cancelReason = ""; actionError = null } },
+            title = { Text("Cancel Order", fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    actionError?.let { Text(it, color = Color(0xFFB91C1C), fontSize = 12.sp) }
+                    Text("Are you sure you want to cancel order #${order.orderNumber}? This action cannot be undone.", fontSize = 13.sp)
+                    Spacer(Modifier.height(10.dp))
+                    Text("Reason for cancellation *", fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    ReasonDropdown(cancelReason, listOf("Changed my mind", "Found a better price", "Ordered by mistake", "Delivery time too long", "Other"), "Select a reason") { cancelReason = it }
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = cancelReason.isNotBlank() && !actionLoading, onClick = {
+                    scope.launch {
+                        actionLoading = true
+                        actionError = BzeadRepository.cancelBuyerOrder(order.id, cancelReason.trim())
+                        actionLoading = false
+                        if (actionError == null) {
+                            showCancelDialog = false
+                            snackbarHostState.showSnackbar("Order cancelled successfully")
+                            BzeadRepository.refreshOrders()
+                            statusHistory = BzeadRepository.fetchOrderStatusHistory(order.id)
+                        }
+                    }
+                }) { Text(if (actionLoading) "Cancelling..." else "Cancel Order", color = Color(0xFFDC2626)) }
+            },
+            dismissButton = { TextButton(enabled = !actionLoading, onClick = { showCancelDialog = false; cancelReason = ""; actionError = null }) { Text("Keep Order") } }
+        )
+    }
+
+    if (showReturnDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!actionLoading) { showReturnDialog = false; returnReason = ""; returnDescription = ""; actionError = null } },
+            title = { Text("Request Return", fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    actionError?.let { Text(it, color = Color(0xFFB91C1C), fontSize = 12.sp) }
+                    Text("Submit a return request for order #${order.orderNumber}.", fontSize = 13.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Text("Reason *", fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    ReasonDropdown(returnReason, listOf("Defective/Damaged product", "Wrong item received", "Item not as described", "Size/Fit issue", "Quality not satisfactory", "Other"), "Select a reason") { returnReason = it }
+                    androidx.compose.material3.OutlinedTextField(
+                        value = returnDescription,
+                        onValueChange = { returnDescription = it },
+                        label = { Text("Additional details") },
+                        placeholder = { Text("Describe the issue...") },
+                        minLines = 3,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = returnReason.isNotBlank() && !actionLoading, onClick = {
+                    scope.launch {
+                        val selectedItem = order.items.firstOrNull { it.id == returnItemId }
+                        actionLoading = true
+                        actionError = BzeadRepository.requestOrderReturn(
+                            order.id, selectedItem?.id, returnReason.trim(), returnDescription.trim(),
+                            selectedItem?.quantity ?: order.items.sumOf { it.quantity }
+                        )
+                        actionLoading = false
+                        if (actionError == null) {
+                            showReturnDialog = false
+                            snackbarHostState.showSnackbar("Return request submitted")
+                            BzeadRepository.refreshOrders()
+                            orderReturns = BzeadRepository.fetchOrderReturns(order.id)
+                            statusHistory = BzeadRepository.fetchOrderStatusHistory(order.id)
+                        }
+                    }
+                }) { Text(if (actionLoading) "Submitting..." else "Submit Return", color = Color(0xFFF97316)) }
+            },
+            dismissButton = { TextButton(enabled = !actionLoading, onClick = { showReturnDialog = false; returnReason = ""; returnDescription = ""; actionError = null }) { Text("Cancel") } }
+        )
     }
 }
 

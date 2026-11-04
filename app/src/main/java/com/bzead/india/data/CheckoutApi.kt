@@ -29,6 +29,14 @@ data class CheckoutItem(
     val productImage: String
 )
 
+/** Web Cart.tsx price verification: per-item variant prices, per-item unavailable reasons and product public prices. */
+class CartPriceResult(
+    val variantPrices: Map<String, Double>,
+    val unavailable: Map<String, String>,
+    val publicPrices: Map<String, Double>,
+    val error: String?
+)
+
 data class MinimumOrderConstraint(
     val minimumInr: Double,
     val currentSubtotalInr: Double,
@@ -232,6 +240,85 @@ internal object CheckoutApi {
             out[index] = variant to selling
         }
         return out
+    }
+
+    /** Web `fetchVerifiedVariantPrices(..., { perItem: true })` followed by `fetchPublicProductPrices`. Keys are cart item ids. */
+    suspend fun verifyCartPrices(items: List<CheckoutItem>, country: String, token: String): CartPriceResult {
+        val valid = items.filter { it.cartItemId.isNotBlank() && it.productId.isNotBlank() }
+        if (valid.isEmpty()) return CartPriceResult(emptyMap(), emptyMap(), emptyMap(), null)
+        val productIds = valid.map { it.productId }.distinct()
+        val res = get("product_variants?select=id,product_id,sku,price,size,color&product_id=${ids(productIds)}", token)
+        if (!res.ok) return CartPriceResult(emptyMap(), emptyMap(), emptyMap(), "Unable to verify selected product variants: ${res.error}")
+        val byProduct = rows(res).groupBy { str(it, "product_id") }
+
+        fun normVal(v: String?) = (v ?: "").trim().lowercase()
+
+        val errors = mutableMapOf<String, String>()
+        val selected = mutableListOf<Pair<CheckoutItem, Double>>()
+        for (item in valid) {
+            val variants = byProduct[item.productId].orEmpty()
+            val variantId = (item.selectedVariantId ?: "").trim()
+            val variantSku = (item.selectedVariantSku ?: "").trim()
+            val size = normVal(item.selectedSize)
+            val color = normVal(item.selectedColor)
+            val hasSelection = variantId.isNotEmpty() || variantSku.isNotEmpty() || size.isNotEmpty() || color.isNotEmpty()
+            if (variants.isEmpty()) {
+                if (hasSelection) errors[item.cartItemId] = "A selected product variant is no longer available. Return to your cart and select it again."
+                continue
+            }
+            if (!hasSelection) {
+                errors[item.cartItemId] = "A product variant must be selected before checkout. Return to your cart and select an available variant."
+                continue
+            }
+            val matches = variants.filter { row ->
+                if (variantId.isNotEmpty() && str(row, "id") != variantId) return@filter false
+                if (variantSku.isNotEmpty() && str(row, "sku").trim().lowercase() != variantSku.lowercase()) return@filter false
+                if (size.isNotEmpty() && normVal(str(row, "size")) != size && normVal(str(row, "size_value")) != size) return@filter false
+                if (color.isNotEmpty() && normVal(str(row, "color")) != color) return@filter false
+                true
+            }
+            if (matches.size != 1) {
+                errors[item.cartItemId] =
+                    if (matches.isEmpty()) "The selected product variant is unavailable or has changed. Return to your cart and select it again."
+                    else "The selected product variant cannot be uniquely verified. Return to your cart and select it again."
+                continue
+            }
+            val row = matches[0]
+            val base = str(row, "price").toDoubleOrNull() ?: Double.NaN
+            if (str(row, "id").trim().isEmpty() || str(row, "sku").trim().isEmpty() || !base.isFinite() || base <= 0) {
+                errors[item.cartItemId] = "The selected product variant has incomplete pricing information. Please contact support."
+                continue
+            }
+            selected.add(item to base)
+        }
+
+        val variantPrices = mutableMapOf<String, Double>()
+        for ((item, base) in selected) {
+            val body = JSONObject()
+                .put("p_product_ids", JSONArray().put(item.productId))
+                .put("p_country", country.ifBlank { JSONObject.NULL })
+                .put("p_price_overrides", JSONObject().put(item.productId, base))
+            val r = SupabaseRest.request("POST", "rpc/get_public_product_prices_with_overrides", token, body.toString())
+            if (!r.ok) return CartPriceResult(emptyMap(), emptyMap(), emptyMap(), "Unable to verify the selected variant price: ${r.error}")
+            val priceRow = rows(r).firstOrNull { str(it, "product_id") == item.productId }
+            val selling = priceRow?.let { finiteNum(it, "selling_price") }
+            if (selling == null || !selling.isFinite() || selling <= 0) {
+                errors[item.cartItemId] = "The selected product variant could not be priced. Return to your cart and try again."
+                continue
+            }
+            variantPrices[item.cartItemId] = selling
+        }
+
+        val publicPrices = mutableMapOf<String, Double>()
+        val body = JSONObject().put("p_product_ids", JSONArray(productIds)).put("p_country", country.ifBlank { JSONObject.NULL })
+        val pr = SupabaseRest.request("POST", "rpc/get_public_product_prices", token, body.toString())
+        if (pr.ok) {
+            for (row in rows(pr)) {
+                val pid = str(row, "product_id")
+                if (pid.isNotEmpty()) publicPrices[pid] = finiteNum(row, "selling_price")
+            }
+        }
+        return CartPriceResult(variantPrices, errors, publicPrices, null)
     }
 
     private class DomesticLine(

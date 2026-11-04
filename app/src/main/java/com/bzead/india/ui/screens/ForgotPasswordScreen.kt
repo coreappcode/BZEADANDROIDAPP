@@ -1,6 +1,7 @@
 package com.bzead.india.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -62,7 +63,6 @@ fun ForgotPasswordScreen(
     var email by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    var successMsg by remember { mutableStateOf<String?>(null) }
 
     fun handleSendReset() {
         error = null
@@ -88,7 +88,7 @@ fun ForgotPasswordScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFFF8FAFC))
+            .background(Color.White)
     ) {
         BuyerAuthNav(onNavigateBack = onNavigateBack)
 
@@ -96,17 +96,21 @@ fun ForgotPasswordScreen(
             modifier = Modifier
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 20.dp),
+                .padding(horizontal = 16.dp, vertical = 0.dp)
+                .padding(bottom = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
+            BuyerAuthPageTitle("Reset password")
+            Spacer(modifier = Modifier.height(24.dp))
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .testTag("forgot_password_card"),
-                shape = RoundedCornerShape(12.dp),
+                    .testTag("forgot_password_card")
+                    .border(1.dp, Color(0xFFEDF0F4), RoundedCornerShape(8.dp)),
+                shape = RoundedCornerShape(8.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
                     // Back link
@@ -137,12 +141,7 @@ fun ForgotPasswordScreen(
                         subtitle = "Enter your email to receive reset code"
                     )
 
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    if (successMsg != null) {
-                        AuthSuccessAlert(message = successMsg!!)
-                        Spacer(modifier = Modifier.height(12.dp))
-                    }
+                    Spacer(modifier = Modifier.height(20.dp))
 
                     if (error != null) {
                         AuthErrorAlert(message = error!!)
@@ -249,6 +248,13 @@ fun ForgotPasswordScreen(
                                 .testTag("back_to_login_link")
                         )
                     }
+                    Text(
+                        text = "We only send transactional emails. Check spam if the message is delayed.",
+                        fontSize = 11.sp,
+                        color = Color(0xFF64748B),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+                    )
                 }
             }
         }

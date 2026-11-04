@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.item
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -46,16 +47,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bzead.india.data.BzeadRepository
 import com.bzead.india.data.Product
+import com.bzead.india.data.SupabaseClient
 import com.bzead.india.theme.BzeadPrimary
 import com.bzead.india.theme.TextPrimary
 import com.bzead.india.theme.TextSecondary
 import com.bzead.india.ui.components.ProductCard
+import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -67,24 +71,61 @@ fun SearchScreen(
     modifier: Modifier = Modifier
 ) {
     var searchQuery by remember { mutableStateOf("") }
-    val recentSearches by BzeadRepository.recentSearches.collectAsState()
+    val recentSearches by BzeadRepository.recentSearchEntries.collectAsState()
+    val isLoggedIn by BzeadRepository.isLoggedIn.collectAsState()
     val wishlistIds by BzeadRepository.wishlistProductIds.collectAsState()
     val scope = rememberCoroutineScope()
 
     var searchResults by remember { mutableStateOf<List<Product>>(emptyList()) }
     var searchError by remember { mutableStateOf<String?>(null) }
+    var searchLoading by remember { mutableStateOf(false) }
+    var searchTotalCount by remember { mutableStateOf(0) }
+    var submittedSearch by remember { mutableStateOf(false) }
+    var loadingMore by remember { mutableStateOf(false) }
+    var hasMoreResults by remember { mutableStateOf(false) }
 
-    androidx.compose.runtime.LaunchedEffect(Unit) { BzeadRepository.loadSearchHistory() }
+    androidx.compose.runtime.LaunchedEffect(isLoggedIn) { BzeadRepository.loadSearchHistory() }
 
-    androidx.compose.runtime.LaunchedEffect(searchQuery) {
+    androidx.compose.runtime.LaunchedEffect(searchQuery, submittedSearch) {
         searchError = null
-        if (searchQuery.isBlank()) {
+        if (searchQuery.isBlank() || (!submittedSearch && searchQuery.trim().length < 2)) {
             searchResults = emptyList()
+            hasMoreResults = false
+            searchTotalCount = 0
+            searchLoading = false
             return@LaunchedEffect
         }
-        kotlinx.coroutines.delay(300)
-        val results = BzeadRepository.searchCatalog(searchQuery)
-        if (results == null) searchError = "Search failed. Please try again." else searchResults = results
+        searchResults = emptyList()
+        searchLoading = true
+        kotlinx.coroutines.delay(180)
+        val limit = if (submittedSearch) 50 else 8
+        val page = SupabaseClient.searchProductPage(searchQuery.trim(), limit, 0)
+        if (page == null) {
+            searchError = "Search suggestions are temporarily unavailable. Press Go to view results."
+        } else {
+            searchResults = page.products
+            searchTotalCount = page.totalCount
+            hasMoreResults = submittedSearch && page.totalCount > page.products.size
+        }
+        searchLoading = false
+    }
+
+    fun loadMoreResults() {
+        if (loadingMore || !hasMoreResults) return
+        scope.launch {
+            loadingMore = true
+            val page = SupabaseClient.searchProductPage(searchQuery.trim(), 50, searchResults.size)
+            if (page == null) {
+                searchError = "Search failed. Please try again."
+            } else {
+                val known = searchResults.map { it.id }.toSet()
+                val newProducts = page.products.filterNot { it.id in known }
+                searchResults = searchResults + newProducts
+                searchTotalCount = page.totalCount
+                hasMoreResults = searchResults.size < page.totalCount && newProducts.isNotEmpty()
+            }
+            loadingMore = false
+        }
     }
 
     Column(
@@ -114,17 +155,20 @@ fun SearchScreen(
 
                 TextField(
                     value = searchQuery,
-                    onValueChange = { searchQuery = it },
+                    onValueChange = { searchQuery = it; submittedSearch = false; searchTotalCount = 0 },
                     placeholder = {
                         Text(
-                            text = "Search products, brands, categories...",
+                            text = "Search for products, brands...",
                             fontSize = 14.sp,
                             color = TextSecondary
                         )
                     },
                     singleLine = true,
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
-                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { BzeadRepository.saveSearch(searchQuery) }),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = {
+                        val query = searchQuery.trim()
+                        if (query.isNotEmpty()) { BzeadRepository.saveSearch(query); submittedSearch = true }
+                    }),
                     leadingIcon = {
                         Icon(
                             imageVector = Icons.Default.Search,
@@ -155,13 +199,20 @@ fun SearchScreen(
                         .height(48.dp)
                         .testTag("search_input_field")
                 )
-                Spacer(modifier = Modifier.width(8.dp))
+                androidx.compose.material3.TextButton(
+                    onClick = {
+                        val query = searchQuery.trim()
+                        if (query.isNotEmpty()) { BzeadRepository.saveSearch(query); submittedSearch = true }
+                    },
+                    enabled = searchQuery.isNotBlank()
+                ) { Text("Go", color = Color.Black, fontWeight = FontWeight.SemiBold) }
+                Spacer(modifier = Modifier.width(4.dp))
             }
         }
 
         if (searchQuery.isBlank()) {
-            // Recent Searches and trending tags
-            Column(
+            // Recent searches
+            if (recentSearches.isNotEmpty()) Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp)
@@ -181,8 +232,17 @@ fun SearchScreen(
                         text = "Recent Searches",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = TextPrimary
+                        color = TextPrimary,
+                        modifier = Modifier.weight(1f)
                     )
+                    if (recentSearches.isNotEmpty()) {
+                        Text(
+                            text = "Clear all",
+                            fontSize = 12.sp,
+                            color = BzeadPrimary,
+                            modifier = Modifier.clickable { BzeadRepository.clearSearchHistory() }.padding(4.dp)
+                        )
+                    }
                 }
 
                 FlowRow(
@@ -190,12 +250,16 @@ fun SearchScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    recentSearches.forEach { tag ->
+                    recentSearches.forEach { entry ->
                         Surface(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(16.dp))
-                                .clickable { searchQuery = tag }
-                                .testTag("recent_tag_$tag"),
+                                .clickable {
+                                    val productId = entry.productId
+                                    if (entry.isProductClick && !productId.isNullOrBlank()) onNavigateToProduct(productId)
+                                    else { searchQuery = entry.typedInput; submittedSearch = true }
+                                }
+                                .testTag("recent_tag_${entry.typedInput}"),
                             color = Color.White,
                             shadowElevation = 1.dp
                         ) {
@@ -203,66 +267,82 @@ fun SearchScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.padding(start = 14.dp, top = 8.dp, bottom = 8.dp, end = 8.dp)
                             ) {
-                                Text(text = tag, fontSize = 13.sp, color = TextPrimary)
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(text = entry.typedInput, fontSize = 13.sp, color = TextPrimary)
+                                    val categoryPath = listOf(entry.categoryName, entry.subCategoryName, entry.productTypeName)
+                                        .filterNotNull().joinToString(" › ")
+                                    if (categoryPath.isNotBlank()) Text(categoryPath, fontSize = 11.sp, color = TextSecondary, maxLines = 1)
+                                }
                                 Text(
                                     text = "✕",
                                     fontSize = 13.sp,
                                     color = TextSecondary,
                                     modifier = Modifier
-                                        .clickable { BzeadRepository.deleteSearch(tag) }
+                                        .clickable { BzeadRepository.deleteSearch(entry.typedInput) }
                                         .padding(start = 8.dp)
-                                        .testTag("recent_delete_$tag")
+                                        .testTag("recent_delete_${entry.typedInput}")
                                 )
                             }
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
 
-                // Popular categories shortcut
+            }
+        } else if (!submittedSearch && searchQuery.trim().length < 2) {
+            Spacer(modifier = Modifier.height(1.dp))
+        } else if (!submittedSearch) {
+            Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
                 Text(
-                    text = "Explore Categories",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary,
-                    modifier = Modifier.padding(bottom = 12.dp)
+                    if (searchError != null) "Search suggestions are temporarily unavailable. Press Go to view results."
+                    else if (searchLoading) "Searching products..."
+                    else if (searchResults.isEmpty()) "No matching products. Press Go to search all products."
+                    else "Product suggestions",
+                    fontSize = 14.sp,
+                    color = if (searchError != null) Color(0xFFB91C1C) else TextSecondary,
+                    modifier = Modifier.padding(bottom = 8.dp)
                 )
-
-                BzeadRepository.allCategories.take(4).forEach { cat ->
+                searchResults.take(8).forEach { product ->
                     Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp)
-                            .clickable { searchQuery = cat.name },
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp).clickable {
+                            BzeadRepository.saveProductSearch(product)
+                            onNavigateToProduct(product.id)
+                        },
                         colors = CardDefaults.cardColors(containerColor = Color.White),
                         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                     ) {
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(14.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth().padding(10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = cat.name,
-                                fontWeight = FontWeight.SemiBold,
-                                color = TextPrimary,
-                                fontSize = 14.sp
-                            )
-                            Text(
-                                text = cat.tag,
-                                fontSize = 11.sp,
-                                color = BzeadPrimary,
-                                fontWeight = FontWeight.Bold
-                            )
+                            if (product.imageUrl.isNotBlank()) {
+                                AsyncImage(
+                                    model = product.imageUrl,
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.size(36.dp).clip(RoundedCornerShape(4.dp))
+                                )
+                            } else {
+                                Icon(Icons.Default.Search, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(36.dp))
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(product.title, color = TextPrimary, fontSize = 14.sp, maxLines = 1)
+                                if (product.brand.isNotBlank()) Text(product.brand, color = TextSecondary, fontSize = 12.sp, maxLines = 1)
+                            }
                         }
                     }
                 }
+                if (searchResults.isNotEmpty()) {
+                    TextButton(onClick = {
+                        val query = searchQuery.trim()
+                        if (query.isNotEmpty()) { BzeadRepository.saveSearch(query); submittedSearch = true }
+                    }) { Text("Go to search results") }
+                } else if (searchError == null) {
+                    Text("No matching products. Press Go to search all products.", fontSize = 13.sp, color = TextSecondary)
+                }
             }
         } else {
-            // Search Results
+            // Search results
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -277,7 +357,7 @@ fun SearchScreen(
                     color = TextPrimary
                 )
                 Text(
-                    text = "${searchResults.size} items",
+                    text = if (searchTotalCount > 0) "${searchResults.size} shown · $searchTotalCount matching products" else "${searchResults.size} items",
                     fontSize = 12.sp,
                     color = TextSecondary
                 )
@@ -311,12 +391,12 @@ fun SearchScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(searchResults) { product ->
+                    items(searchResults, key = { it.id }) { product ->
                         ProductCard(
                             product = product,
                             isWishlisted = wishlistIds.contains(product.id),
                             onProductClick = {
-                                BzeadRepository.saveSearch(searchQuery)
+                                BzeadRepository.saveProductSearch(product)
                                 onNavigateToProduct(product.id)
                             },
                             onWishlistToggle = { BzeadRepository.toggleWishlist(product.id) },
@@ -327,6 +407,17 @@ fun SearchScreen(
                                 }
                             }
                         )
+                    }
+                    if (hasMoreResults) {
+                        item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                            TextButton(
+                                onClick = { loadMoreResults() },
+                                enabled = !loadingMore,
+                                modifier = Modifier.fillMaxWidth().padding(12.dp)
+                            ) {
+                                Text(if (loadingMore) "Loading more products..." else "Load more results")
+                            }
+                        }
                     }
                 }
             }

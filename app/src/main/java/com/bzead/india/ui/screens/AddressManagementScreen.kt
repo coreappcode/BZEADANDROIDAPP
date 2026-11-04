@@ -1,22 +1,59 @@
 package com.bzead.india.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Business
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Place
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bzead.india.data.BzeadRepository
@@ -24,17 +61,21 @@ import com.bzead.india.model.DeliveryAddress
 import com.bzead.india.util.AddressValidation
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
+private val AddressAmber = Color(0xFFF59E0B)
+private val AddressInk = Color(0xFF111827)
+private val AddressMuted = Color(0xFF6B7280)
+
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-fun AddressManagementScreen(
-    onNavigateBack: () -> Unit
-) {
+fun AddressManagementScreen(onNavigateBack: () -> Unit) {
     val addresses by BzeadRepository.addresses.collectAsState()
-    
-    var showFormDialog by remember { mutableStateOf(false) }
+    val isLoggedIn by BzeadRepository.isLoggedIn.collectAsState()
+    val scope = rememberCoroutineScope()
+    var isLoading by remember { mutableStateOf(true) }
+
+    var showForm by remember { mutableStateOf(false) }
     var editingAddress by remember { mutableStateOf<DeliveryAddress?>(null) }
-    
-    // Form fields
+    var pendingDelete by remember { mutableStateOf<DeliveryAddress?>(null) }
     var fullName by remember { mutableStateOf("") }
     var phoneNumber by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
@@ -46,389 +87,414 @@ fun AddressManagementScreen(
     var addressType by remember { mutableStateOf("home") }
     var deliveryNotes by remember { mutableStateOf("") }
     var isDefault by remember { mutableStateOf(false) }
-    var formError by remember { mutableStateOf<String?>(null) }
-    var actionError by remember { mutableStateOf<String?>(null) }
+    var fieldErrors by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var errorMessage by remember { mutableStateOf("") }
+    var successMessage by remember { mutableStateOf("") }
     var isSaving by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-    
-    val openFormForNew = {
-        editingAddress = null
-        fullName = ""
-        phoneNumber = ""
-        email = ""
-        streetAddress = ""
-        streetAddress2 = ""
-        city = ""
-        state = ""
-        deliveryNotes = ""
-        formError = null
-        pinCode = ""
-        addressType = "home"
-        isDefault = addresses.isEmpty()
-        showFormDialog = true
+
+    LaunchedEffect(isLoggedIn) {
+        isLoading = true
+        val loaded = if (isLoggedIn) BzeadRepository.refreshAddresses() else false
+        isLoading = false
+        if (isLoggedIn && !loaded) errorMessage = "Failed to load addresses"
     }
-    
-    val openFormForEdit = { addr: DeliveryAddress ->
-        editingAddress = addr
-        fullName = addr.fullName
-        phoneNumber = addr.phoneNumber
-        email = addr.email
-        streetAddress = addr.streetAddress
-        streetAddress2 = addr.streetAddress2
-        city = addr.city
-        state = addr.state
-        deliveryNotes = addr.deliveryNotes
-        formError = null
-        pinCode = addr.pinCode
-        addressType = addr.addressType
-        isDefault = addr.isDefault
-        showFormDialog = true
+
+    fun resetForm(address: DeliveryAddress? = null) {
+        editingAddress = address
+        fullName = address?.fullName.orEmpty()
+        phoneNumber = address?.phoneNumber.orEmpty()
+        email = address?.email.orEmpty()
+        streetAddress = address?.streetAddress.orEmpty()
+        streetAddress2 = address?.streetAddress2.orEmpty()
+        city = address?.city.orEmpty()
+        state = address?.state.orEmpty()
+        pinCode = address?.pinCode.orEmpty()
+        addressType = address?.addressType ?: "home"
+        deliveryNotes = address?.deliveryNotes.orEmpty()
+        isDefault = address?.isDefault ?: addresses.isEmpty()
+        fieldErrors = emptyMap()
+        errorMessage = ""
+        successMessage = ""
+        showForm = true
     }
-    
+
+    fun formAddress(): DeliveryAddress = DeliveryAddress(
+        id = editingAddress?.id.orEmpty(),
+        fullName = fullName,
+        phoneNumber = phoneNumber,
+        email = email,
+        country = DeliveryAddress.INDIA_COUNTRY_NAME,
+        streetAddress = streetAddress,
+        streetAddress2 = streetAddress2,
+        city = city,
+        state = state,
+        pinCode = pinCode,
+        addressType = addressType,
+        deliveryNotes = deliveryNotes,
+        isDefault = isDefault
+    )
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Address Management", fontWeight = FontWeight.Bold) },
+                title = { Text("My Addresses", color = AddressInk, fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = AddressInk)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFF0F172A),
-                    titleContentColor = Color.White,
-                    navigationIconContentColor = Color.White
-                )
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
             )
         },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = openFormForNew,
-                containerColor = Color(0xFFFFD700),
-                contentColor = Color.Black
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "Add Address")
-            }
-        }
+        containerColor = Color.White
     ) { padding ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(Color(0xFFF8FAFC))
+                .background(Color.White)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            if (addresses.isEmpty()) {
-                Column(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally
+            if (isLoading) {
+                Row(modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp), horizontalArrangement = Arrangement.Center) {
+                    CircularProgressIndicator(color = AddressAmber)
+                }
+            }
+            if (successMessage.isNotEmpty()) {
+                AddressMessage(successMessage, false) { successMessage = "" }
+            }
+            if (errorMessage.isNotEmpty()) {
+                AddressMessage(errorMessage, true) { errorMessage = "" }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("My Addresses", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = AddressInk)
+                Text("Manage your delivery addresses", color = AddressMuted)
+            }
+
+            if (showForm) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF9FAFB)),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.LocationOn,
-                        contentDescription = null,
-                        tint = Color.Gray,
-                        modifier = Modifier.size(64.dp)
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text("No Saved Addresses", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("Add your delivery address for faster checkout.", fontSize = 14.sp, color = Color(0xFF64748B))
-                    Spacer(modifier = Modifier.height(24.dp))
-                    Button(
-                        onClick = openFormForNew,
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F172A))
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = null, tint = Color.White)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Add New Address", color = Color.White)
+                        Text(
+                            if (editingAddress == null) "Add New Address" else "Edit Address",
+                            color = AddressAmber,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        AddressInput("Full Name *", fullName, { fullName = it; fieldErrors = fieldErrors - "fullName" }, "fullName", fieldErrors)
+                        AddressInput(
+                            "Phone Number *", phoneNumber, { phoneNumber = it; fieldErrors = fieldErrors - "phoneNumber" }, "phoneNumber", fieldErrors,
+                            keyboardType = KeyboardType.Phone, placeholder = "+91 99999 99999"
+                        )
+                        AddressInput(
+                            "Email Address *", email, { email = it; fieldErrors = fieldErrors - "email" }, "email", fieldErrors,
+                            keyboardType = KeyboardType.Email, placeholder = "your@email.com"
+                        )
+                        AddressInput("Country *", DeliveryAddress.INDIA_COUNTRY_NAME, {}, "country", fieldErrors, enabled = false)
+                        AddressInput(
+                            "Street Address Line 1 *", streetAddress, { streetAddress = it; fieldErrors = fieldErrors - "streetAddress1" }, "streetAddress1", fieldErrors,
+                            placeholder = "Enter your street address"
+                        )
+                        AddressInput(
+                            "Street Address Line 2 (Optional)", streetAddress2, { streetAddress2 = it }, "streetAddress2", fieldErrors,
+                            placeholder = "Apartment, suite, etc. (Optional)"
+                        )
+                        AddressInput(
+                            "City / Town *", city, { city = it; fieldErrors = fieldErrors - "city" }, "city", fieldErrors,
+                            placeholder = "Enter your city"
+                        )
+                        AddressInput(
+                            "State / Province / Region *", state, { state = it; fieldErrors = fieldErrors - "state" }, "state", fieldErrors,
+                            placeholder = "Enter your state or province"
+                        )
+                        AddressInput(
+                            "Postal / ZIP Code *", pinCode, { pinCode = it; fieldErrors = fieldErrors - "postalCode" }, "postalCode", fieldErrors,
+                            placeholder = "e.g., 110001"
+                        )
+
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Address Type", color = AddressMuted, fontWeight = FontWeight.Medium)
+                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                listOf("home", "work", "other").forEach { type ->
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        RadioButton(
+                                            selected = addressType == type,
+                                            onClick = { addressType = type }
+                                        )
+                                        Text(type.replaceFirstChar { it.uppercase() }, color = AddressMuted, fontSize = 14.sp)
+                                    }
+                                }
+                            }
+                        }
+
+                        AddressInput(
+                            "Delivery Notes (Optional)", deliveryNotes, { deliveryNotes = it }, "deliveryNotes", fieldErrors,
+                            singleLine = false, placeholder = "Leave at door / call before delivery / gate code / etc."
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = isDefault, onCheckedChange = { isDefault = it })
+                            Text("Set as default address", color = AddressMuted, fontSize = 14.sp)
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                            OutlinedButton(
+                                onClick = { showForm = false; fieldErrors = emptyMap() },
+                                enabled = !isSaving,
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(8.dp)
+                            ) { Text("Cancel", color = AddressInk) }
+                            Button(
+                                onClick = {
+                                    val address = formAddress()
+                                    fieldErrors = AddressValidation.fieldErrors(address)
+                                    if (fieldErrors.isEmpty()) {
+                                        isSaving = true
+                                        errorMessage = ""
+                                        val wasEditing = editingAddress != null
+                                        scope.launch {
+                                            val error = if (wasEditing) BzeadRepository.updateAddress(address)
+                                            else BzeadRepository.addAddress(address)
+                                            isSaving = false
+                                            if (error == null) {
+                                                showForm = false
+                                                fieldErrors = emptyMap()
+                                                successMessage = if (wasEditing) "Address updated!" else "Address added!"
+                                            } else errorMessage = "Failed to save address"
+                                        }
+                                    }
+                                },
+                                enabled = !isSaving,
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = AddressAmber, contentColor = Color.Black),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                if (isSaving) {
+                                    CircularProgressIndicator(modifier = Modifier.height(16.dp), color = Color.Black, strokeWidth = 2.dp)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Saving...")
+                                } else Text(if (editingAddress == null) "Add Address" else "Update Address")
+                            }
+                        }
                     }
                 }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
+            } else if (!isLoading) {
+                Button(
+                    onClick = { resetForm() },
+                    enabled = !isSaving,
+                    colors = ButtonDefaults.buttonColors(containerColor = AddressAmber, contentColor = Color.Black),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Add New Address", fontWeight = FontWeight.Medium)
+                }
+            }
+
+            if (!isLoading && addresses.isEmpty()) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    actionError?.let { msg ->
-                        item { Text(msg, color = Color(0xFFB91C1C), fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
+                    Icon(Icons.Default.LocationOn, contentDescription = null, tint = Color(0xFF6B7280))
+                    Text("No addresses added yet", color = AddressMuted)
+                    if (!showForm) {
+                        Button(
+                            onClick = { resetForm() },
+                            colors = ButtonDefaults.buttonColors(containerColor = AddressAmber, contentColor = Color.Black)
+                        ) { Text("Add Your First Address") }
                     }
-                    item {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Your Delivery Addresses (${addresses.size})",
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF0F172A)
-                            )
-                            TextButton(onClick = openFormForNew) {
-                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Add New")
+                }
+            } else if (!isLoading) {
+                addresses.forEach { address ->
+                    AddressCard(
+                        address = address,
+                        isSaving = isSaving,
+                        onEdit = { resetForm(address) },
+                        onDelete = { pendingDelete = address },
+                        onSetDefault = {
+                            isSaving = true
+                            errorMessage = ""
+                            scope.launch {
+                                val error = BzeadRepository.setDefaultAddress(address.id)
+                                isSaving = false
+                                if (error == null) successMessage = "Default address updated!"
+                                else errorMessage = "Failed to set default address"
                             }
                         }
-                    }
-                    
-                    items(addresses, key = { it.id }) { address ->
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                        ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Surface(
-                                            color = when (address.addressType.lowercase()) {
-                                                "work" -> Color(0xFFDBEAFE)
-                                                "other" -> Color(0xFFF3E8FF)
-                                                else -> Color(0xFFFEF3C7)
-                                            },
-                                            shape = RoundedCornerShape(16.dp)
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Icon(
-                                                    imageVector = when (address.addressType.lowercase()) {
-                                                        "work" -> Icons.Default.Business
-                                                        "other" -> Icons.Default.Place
-                                                        else -> Icons.Default.Home
-                                                    },
-                                                    contentDescription = null,
-                                                    modifier = Modifier.size(14.dp),
-                                                    tint = when (address.addressType.lowercase()) {
-                                                        "work" -> Color(0xFF1E40AF)
-                                                        "other" -> Color(0xFF6B21A8)
-                                                        else -> Color(0xFF92400E)
-                                                    }
-                                                )
-                                                Spacer(modifier = Modifier.width(4.dp))
-                                                Text(
-                                                    text = address.addressType.uppercase(),
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = when (address.addressType.lowercase()) {
-                                                        "work" -> Color(0xFF1E40AF)
-                                                        "other" -> Color(0xFF6B21A8)
-                                                        else -> Color(0xFF92400E)
-                                                    }
-                                                )
-                                            }
-                                        }
-                                        
-                                        if (address.isDefault) {
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Surface(
-                                                color = Color(0xFFDCFCE7),
-                                                shape = RoundedCornerShape(16.dp)
-                                            ) {
-                                                Text(
-                                                    text = "DEFAULT",
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = Color(0xFF166534),
-                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-                                    
-                                    Row {
-                                        IconButton(
-                                            onClick = { openFormForEdit(address) },
-                                            modifier = Modifier.size(32.dp)
-                                        ) {
-                                            Icon(Icons.Default.Edit, contentDescription = "Edit", tint = Color(0xFF475569))
-                                        }
-                                        IconButton(
-                                            onClick = { scope.launch { actionError = BzeadRepository.deleteAddress(address.id) } },
-                                            modifier = Modifier.size(32.dp)
-                                        ) {
-                                            Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color(0xFFEF4444))
-                                        }
-                                    }
-                                }
-                                
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Text(text = address.fullName, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFF0F172A))
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(text = address.formatted, fontSize = 14.sp, color = Color(0xFF475569))
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(text = "Phone: ${address.phoneNumber}", fontSize = 13.sp, color = Color(0xFF64748B))
-                                
-                                if (!address.isDefault) {
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                    OutlinedButton(
-                                        onClick = { scope.launch { actionError = BzeadRepository.setDefaultAddress(address.id) } },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        shape = RoundedCornerShape(8.dp)
-                                    ) {
-                                        Text("Set as Default Address", fontSize = 12.sp)
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    )
                 }
             }
         }
     }
-    
-    if (showFormDialog) {
-        AlertDialog(
-            onDismissRequest = { showFormDialog = false },
-            title = {
-                Text(
-                    if (editingAddress != null) "Edit Delivery Address" else "Add New Delivery Address",
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    OutlinedTextField(
-                        value = fullName,
-                        onValueChange = { fullName = it },
-                        label = { Text("Full Name *") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = phoneNumber,
-                        onValueChange = { phoneNumber = it },
-                        label = { Text("Mobile Number *") },
-                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Phone),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = email,
-                        onValueChange = { email = it },
-                        label = { Text("Email *") },
-                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Email),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = streetAddress,
-                        onValueChange = { streetAddress = it },
-                        label = { Text("Flat, House No., Building *") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = streetAddress2,
-                        onValueChange = { streetAddress2 = it },
-                        label = { Text("Area, Street, Locality") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(
-                            value = city,
-                            onValueChange = { city = it },
-                            label = { Text("City *") },
-                            modifier = Modifier.weight(1f)
-                        )
-                        OutlinedTextField(
-                            value = state,
-                            onValueChange = { state = it },
-                            label = { Text("State *") },
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                    OutlinedTextField(
-                        value = DeliveryAddress.INDIA_COUNTRY_NAME,
-                        onValueChange = {},
-                        readOnly = true,
-                        enabled = false,
-                        label = { Text("Country") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = pinCode,
-                        onValueChange = { pinCode = it },
-                        label = { Text("PIN Code (6 digits) *") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    
-                    OutlinedTextField(
-                        value = deliveryNotes,
-                        onValueChange = { deliveryNotes = it },
-                        label = { Text("Delivery notes (optional)") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
 
-                    Text("Address Type", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("home", "work", "other").forEach { type ->
-                            FilterChip(
-                                selected = addressType == type,
-                                onClick = { addressType = type },
-                                label = { Text(type.replaceFirstChar { it.uppercase() }) }
-                            )
-                        }
-                    }
-                    
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(
-                            checked = isDefault,
-                            onCheckedChange = { isDefault = it }
-                        )
-                        Text("Make this my default address", fontSize = 13.sp)
-                    }
-                    formError?.let { Text(it, color = Color(0xFFB91C1C), fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
-                }
-            },
+    pendingDelete?.let { address ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("Delete Address", fontWeight = FontWeight.Bold) },
+            text = { Text("Are you sure you want to delete this address? This cannot be undone.") },
             confirmButton = {
                 Button(
-                    enabled = !isSaving,
                     onClick = {
-                        val newAddr = DeliveryAddress(
-                            id = editingAddress?.id ?: "",
-                            fullName = fullName.trim(),
-                            phoneNumber = phoneNumber.trim(),
-                            streetAddress = streetAddress.trim(),
-                            streetAddress2 = streetAddress2.trim(),
-                            city = city.trim(),
-                            state = state.trim(),
-                            pinCode = pinCode.trim(),
-                            addressType = addressType,
-                            isDefault = isDefault,
-                            email = email.trim(),
-                            country = DeliveryAddress.INDIA_COUNTRY_NAME,
-                            deliveryNotes = deliveryNotes.trim()
-                        )
-                        val invalid = AddressValidation.validate(newAddr, checkout = false)
-                        if (invalid != null) {
-                            formError = invalid
-                        } else {
-                            isSaving = true
-                            scope.launch {
-                                val err = if (editingAddress != null) BzeadRepository.updateAddress(newAddr)
-                                else BzeadRepository.addAddress(newAddr)
-                                isSaving = false
-                                if (err == null) showFormDialog = false else formError = err
-                            }
+                        pendingDelete = null
+                        isSaving = true
+                        errorMessage = ""
+                        scope.launch {
+                            val error = BzeadRepository.deleteAddress(address.id)
+                            isSaving = false
+                            if (error == null) successMessage = "Address deleted!"
+                            else errorMessage = error
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F172A))
-                ) {
-                    Text("Save Address", color = Color.White)
-                }
+                    enabled = !isSaving,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                ) { Text(if (isSaving) "Deleting..." else "Yes, Delete", color = Color.White) }
             },
             dismissButton = {
-                TextButton(onClick = { showFormDialog = false }) {
-                    Text("Cancel")
-                }
+                TextButton(onClick = { pendingDelete = null }) { Text("Cancel") }
             }
         )
+    }
+}
+
+@Composable
+private fun AddressInput(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    errorKey: String,
+    errors: Map<String, String>,
+    enabled: Boolean = true,
+    singleLine: Boolean = true,
+    keyboardType: KeyboardType = KeyboardType.Text,
+    placeholder: String? = null
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            label = { Text(label) },
+            placeholder = { placeholder?.let { Text(it) } },
+            enabled = enabled,
+            isError = errors.containsKey(errorKey),
+            keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+            singleLine = singleLine,
+            maxLines = if (singleLine) 1 else 3,
+            modifier = Modifier.fillMaxWidth()
+        )
+        errors[errorKey]?.let { Text(it, color = Color(0xFFDC2626), fontSize = 12.sp) }
+    }
+}
+
+@Composable
+private fun AddressMessage(message: String, isError: Boolean, onDismiss: () -> Unit) {
+    val background = if (isError) Color(0xFF7F1D1D) else Color(0xFF14532D)
+    val foreground = if (isError) Color(0xFFFECACA) else Color(0xFFBBF7D0)
+    Surface(color = background, shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(message, color = foreground, modifier = Modifier.weight(1f))
+            TextButton(onClick = onDismiss) { Text("×", color = foreground) }
+        }
+    }
+}
+
+@Composable
+private fun AddressCard(
+    address: DeliveryAddress,
+    isSaving: Boolean,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+    onSetDefault: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFF9FAFB)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(
+                    when (address.addressType.lowercase()) {
+                        "home" -> Icons.Default.Home
+                        "work" -> Icons.Default.Business
+                        else -> Icons.Default.Place
+                    },
+                    contentDescription = null,
+                    tint = AddressAmber
+                )
+                Text(address.addressType.ifBlank { "home" }.replaceFirstChar { it.uppercase() }, color = AddressAmber, fontWeight = FontWeight.SemiBold)
+                if (address.isDefault) {
+                    Surface(color = AddressAmber, shape = RoundedCornerShape(50)) {
+                        Text("Default", color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
+                    }
+                }
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Name", fontSize = 12.sp, color = AddressMuted)
+                Text(address.fullName, color = AddressInk, fontWeight = FontWeight.Medium)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(20.dp), modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Phone", fontSize = 12.sp, color = AddressMuted)
+                    Text(address.phoneNumber, fontSize = 14.sp, color = AddressInk)
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Email", fontSize = 12.sp, color = AddressMuted)
+                    Text(address.email, fontSize = 14.sp, color = AddressInk)
+                }
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Address", fontSize = 12.sp, color = AddressMuted)
+                Text(address.streetAddress, fontSize = 14.sp, color = AddressInk)
+                if (address.streetAddress2.isNotBlank()) Text(address.streetAddress2, fontSize = 14.sp, color = AddressInk)
+                Text("${address.city}, ${address.state} ${address.pinCode}", fontSize = 14.sp, color = AddressInk)
+                Text(address.country, fontSize = 14.sp, color = AddressMuted)
+            }
+            if (address.deliveryNotes.isNotBlank()) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("Delivery Notes", fontSize = 12.sp, color = AddressMuted)
+                    Text(address.deliveryNotes, fontSize = 14.sp, color = AddressMuted)
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(onClick = onEdit, enabled = !isSaving, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.Edit, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Edit")
+                }
+                Button(
+                    onClick = onDelete,
+                    enabled = !isSaving,
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                ) {
+                    Icon(Icons.Default.Delete, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Delete", color = Color.White)
+                }
+                if (!address.isDefault) {
+                    Button(
+                        onClick = onSetDefault,
+                        enabled = !isSaving,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = AddressAmber, contentColor = Color.Black)
+                    ) { Text("Set Default") }
+                }
+            }
+        }
     }
 }

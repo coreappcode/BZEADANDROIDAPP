@@ -157,7 +157,7 @@ fun SignupScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFFF8FAFC))
+            .background(Color.White)
     ) {
         BuyerAuthNav(onNavigateBack = onNavigateBack)
 
@@ -165,17 +165,21 @@ fun SignupScreen(
             modifier = Modifier
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 20.dp),
+                .padding(horizontal = 16.dp, vertical = 0.dp)
+                .padding(bottom = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
+            BuyerAuthPageTitle("Create account")
+            Spacer(modifier = Modifier.height(24.dp))
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .testTag("signup_card"),
-                shape = RoundedCornerShape(12.dp),
+                    .testTag("signup_card")
+                    .border(1.dp, Color(0xFFEDF0F4), RoundedCornerShape(8.dp)),
+                shape = RoundedCornerShape(8.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
                     // Back to Home Link
@@ -205,7 +209,7 @@ fun SignupScreen(
                         title = "Create your account"
                     )
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(20.dp))
 
                     if (error != null) {
                         AuthErrorAlert(message = error!!)
@@ -222,10 +226,10 @@ fun SignupScreen(
                     )
                     ExposedDropdownMenuBox(
                         expanded = countryDropdownExpanded,
-                        onExpandedChange = { countryDropdownExpanded = !countryDropdownExpanded }
+                        onExpandedChange = { if (countries.size > 1) countryDropdownExpanded = !countryDropdownExpanded }
                     ) {
                         OutlinedTextField(
-                            value = selectedCountry?.countryName ?: "",
+                            value = selectedCountry?.countryName ?: if (countries.isEmpty()) "India is unavailable" else "",
                             onValueChange = {},
                             readOnly = true,
                             leadingIcon = {
@@ -236,7 +240,7 @@ fun SignupScreen(
                                     modifier = Modifier.size(20.dp)
                                 )
                             },
-                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = countryDropdownExpanded) },
+                            trailingIcon = { if (countries.size > 1) ExposedDropdownMenuDefaults.TrailingIcon(expanded = countryDropdownExpanded) },
                             modifier = Modifier
                                 .menuAnchor()
                                 .fillMaxWidth()
@@ -264,13 +268,15 @@ fun SignupScreen(
                             }
                         }
                     }
-                    Text(
-                        text = "Currency: ${selectedCountry?.currencyCode.orEmpty()}",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Color(0xFF475569),
-                        modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
-                    )
+                    if (selectedCountry != null) {
+                        Text(
+                            text = "Currency: ${selectedCountry!!.currencyCode}",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFF475569),
+                            modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
+                        )
+                    }
 
                     // Field 2: Full Name
                     Text(

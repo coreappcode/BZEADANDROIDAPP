@@ -6,6 +6,9 @@ import com.bzead.india.model.LoginResult
 import com.bzead.india.model.NotificationItem
 import com.bzead.india.model.Order
 import com.bzead.india.model.OrderItem
+import com.bzead.india.model.OrderStatusHistoryRecord
+import com.bzead.india.model.OrderReturnRecord
+import com.bzead.india.model.OrderTrackingEvent
 import com.bzead.india.model.OrderStatus
 import com.bzead.india.model.Review
 import com.bzead.india.model.ProductVariant
@@ -64,12 +67,18 @@ object BzeadRepository {
     private val _wishlistProductIds = MutableStateFlow<Set<String>>(emptySet())
     val wishlistProductIds: StateFlow<Set<String>> = _wishlistProductIds.asStateFlow()
 
+    private val _isWishlistLoading = MutableStateFlow(false)
+    val isWishlistLoading: StateFlow<Boolean> = _isWishlistLoading.asStateFlow()
+
     /** Full product rows for wishlisted items (the backend join), so they show even if outside the loaded catalog page. */
     private val _wishlistProducts = MutableStateFlow<List<Product>>(emptyList())
     val wishlistProducts: StateFlow<List<Product>> = _wishlistProducts.asStateFlow()
 
     private val _isLoggedIn = MutableStateFlow(false)
     val isLoggedIn: StateFlow<Boolean> = _isLoggedIn.asStateFlow()
+
+    private val _isAuthLoading = MutableStateFlow(true)
+    val isAuthLoading: StateFlow<Boolean> = _isAuthLoading.asStateFlow()
 
     private val _userName = MutableStateFlow<String?>(null)
     val userName: StateFlow<String?> = _userName.asStateFlow()
@@ -79,6 +88,12 @@ object BzeadRepository {
 
     private val _userPhone = MutableStateFlow<String?>(null)
     val userPhone: StateFlow<String?> = _userPhone.asStateFlow()
+
+    private val _userCountry = MutableStateFlow<String?>(null)
+    val userCountry: StateFlow<String?> = _userCountry.asStateFlow()
+
+    private val _userCountryId = MutableStateFlow<String?>(null)
+    val userCountryId: StateFlow<String?> = _userCountryId.asStateFlow()
 
     private var sessionStore: SessionStore? = null
     private var session: AuthSession? = null
@@ -93,6 +108,12 @@ object BzeadRepository {
 
     private val _hasMoreNotifications = MutableStateFlow(false)
     val hasMoreNotifications: StateFlow<Boolean> = _hasMoreNotifications.asStateFlow()
+    private val _notificationsLoading = MutableStateFlow(false)
+    val notificationsLoading: StateFlow<Boolean> = _notificationsLoading.asStateFlow()
+    private val _notificationsLoadingMore = MutableStateFlow(false)
+    val notificationsLoadingMore: StateFlow<Boolean> = _notificationsLoadingMore.asStateFlow()
+    private val _notificationsError = MutableStateFlow<String?>(null)
+    val notificationsError: StateFlow<String?> = _notificationsError.asStateFlow()
     private var notificationOffset = 0
 
     private val _addresses = MutableStateFlow<List<DeliveryAddress>>(emptyList())
@@ -102,6 +123,10 @@ object BzeadRepository {
 
     private val _orders = MutableStateFlow<List<Order>>(emptyList())
     val orders: StateFlow<List<Order>> = _orders.asStateFlow()
+    private val _ordersLoading = MutableStateFlow(false)
+    val ordersLoading: StateFlow<Boolean> = _ordersLoading.asStateFlow()
+    private val _ordersError = MutableStateFlow<String?>(null)
+    val ordersError: StateFlow<String?> = _ordersError.asStateFlow()
 
     private val _dataError = MutableStateFlow<String?>(null)
     /** Last backend error for cart/wishlist/address/order/notification actions; UI may show and clear it. */
@@ -133,52 +158,160 @@ object BzeadRepository {
 
     private val _recentSearches = MutableStateFlow<List<String>>(emptyList())
     val recentSearches: StateFlow<List<String>> = _recentSearches.asStateFlow()
+    private val _recentSearchEntries = MutableStateFlow<List<SearchHistoryEntry>>(emptyList())
+    val recentSearchEntries: StateFlow<List<SearchHistoryEntry>> = _recentSearchEntries.asStateFlow()
 
-    private fun guestHistory(): List<String> {
+    private fun guestHistoryEntries(): List<SearchHistoryEntry> {
         val raw = appContext?.getSharedPreferences("bzead_search", android.content.Context.MODE_PRIVATE)
             ?.getString("bzead_search_history", null) ?: return emptyList()
         return try {
             val arr = org.json.JSONArray(raw)
-            (0 until arr.length()).map { arr.getString(it) }
-        } catch (e: Exception) { emptyList() }
+            (0 until arr.length()).mapNotNull { index ->
+                val item = arr.optJSONObject(index)
+                if (item != null) {
+                    val typed = item.optString("typed_input").trim()
+                    if (typed.isBlank()) null else SearchHistoryEntry(
+                        id = item.optString("id").ifBlank { "local_$index" },
+                        typedInput = typed,
+                        isProductClick = item.optBoolean("is_product_click", false),
+                        productId = item.optString("product_id").takeIf { it.isNotBlank() },
+                        productName = item.optString("product_name").takeIf { it.isNotBlank() },
+                        categoryId = item.optString("category_id").takeIf { it.isNotBlank() },
+                        categoryName = item.optString("category_name").takeIf { it.isNotBlank() },
+                        subCategoryId = item.optString("sub_category_id").takeIf { it.isNotBlank() },
+                        subCategoryName = item.optString("sub_category_name").takeIf { it.isNotBlank() },
+                        productTypeId = item.optString("product_type_id").takeIf { it.isNotBlank() },
+                        productTypeName = item.optString("product_type_name").takeIf { it.isNotBlank() }
+                    )
+                } else {
+                    val typed = arr.optString(index).trim()
+                    if (typed.isBlank()) null else SearchHistoryEntry("local_$index", typed)
+                }
+            }
+        } catch (_: Exception) { emptyList() }
     }
 
-    private fun writeGuestHistory(items: List<String>) {
+    private fun writeGuestHistoryEntries(items: List<SearchHistoryEntry>) {
+        val array = org.json.JSONArray()
+        items.take(20).forEach { entry ->
+            array.put(JSONObject()
+                .put("id", entry.id)
+                .put("typed_input", entry.typedInput)
+                .put("is_product_click", entry.isProductClick)
+                .put("product_id", entry.productId ?: JSONObject.NULL)
+                .put("product_name", entry.productName ?: JSONObject.NULL)
+                .put("category_id", entry.categoryId ?: JSONObject.NULL)
+                .put("category_name", entry.categoryName ?: JSONObject.NULL)
+                .put("sub_category_id", entry.subCategoryId ?: JSONObject.NULL)
+                .put("sub_category_name", entry.subCategoryName ?: JSONObject.NULL)
+                .put("product_type_id", entry.productTypeId ?: JSONObject.NULL)
+                .put("product_type_name", entry.productTypeName ?: JSONObject.NULL))
+        }
         appContext?.getSharedPreferences("bzead_search", android.content.Context.MODE_PRIVATE)
-            ?.edit()?.putString("bzead_search_history", org.json.JSONArray(items.take(20)).toString())?.apply()
+            ?.edit()?.putString("bzead_search_history", array.toString())?.apply()
     }
 
-    private fun dedupeHistory(items: List<String>): List<String> {
+    private fun dedupeSearchEntries(items: List<SearchHistoryEntry>): List<SearchHistoryEntry> {
         val seen = HashSet<String>()
-        return items.filter { seen.add(it.lowercase()) }.take(5)
+        return items.filter { seen.add(it.typedInput.lowercase()) }.take(5)
     }
 
-    /** Web Search.tsx fetchHistory: user_search_history for users, local list for guests; 5 shown. */
+    private fun publishSearchHistory(entries: List<SearchHistoryEntry>) {
+        val deduped = dedupeSearchEntries(entries)
+        _recentSearchEntries.value = deduped
+        _recentSearches.value = deduped.map { it.typedInput }
+    }
+
+    /** Web Search.tsx history: authenticated records in user_search_history and guest records locally. */
     suspend fun loadSearchHistory() {
         val uid = session?.userId
         if (uid == null) {
-            _recentSearches.value = dedupeHistory(guestHistory())
+            publishSearchHistory(guestHistoryEntries())
             return
         }
         val token = validToken() ?: return
         val r = SupabaseRest.request(
-            "GET", "user_search_history?select=typed_input&user_id=eq.$uid&order=searched_at.desc&limit=20", token
+            "GET", "user_search_history?select=*&user_id=eq.$uid&order=searched_at.desc&limit=20", token
         )
-        _recentSearches.value = if (r.ok) dedupeHistory(r.rows.map { it.optString("typed_input") }.filter { it.isNotBlank() }) else emptyList()
+        if (!r.ok) {
+            publishSearchHistory(emptyList())
+            return
+        }
+        publishSearchHistory(r.rows.map { row ->
+            SearchHistoryEntry(
+                id = row.optString("id"),
+                typedInput = row.optString("typed_input"),
+                isProductClick = row.optBoolean("is_product_click", false),
+                productId = row.optString("product_id").takeIf { it.isNotBlank() },
+                productName = row.optString("product_name").takeIf { it.isNotBlank() },
+                categoryId = row.optString("category_id").takeIf { it.isNotBlank() },
+                categoryName = row.optString("category_name").takeIf { it.isNotBlank() },
+                subCategoryId = row.optString("sub_category_id").takeIf { it.isNotBlank() },
+                subCategoryName = row.optString("sub_category_name").takeIf { it.isNotBlank() },
+                productTypeId = row.optString("product_type_id").takeIf { it.isNotBlank() },
+                productTypeName = row.optString("product_type_name").takeIf { it.isNotBlank() }
+            )
+        }.filter { it.typedInput.isNotBlank() })
     }
 
     fun saveSearch(typed: String) {
         val value = typed.trim()
+        if (value.isNotEmpty()) saveSearchEntry(SearchHistoryEntry("", value))
+    }
+
+    fun saveProductSearch(product: Product) {
+        authScope.launch {
+            val token = validToken() ?: SupabaseClient.ANON_KEY
+            val ids = listOf(product.categoryId, product.subCategoryId, product.productTypeId).filter { it.isNotBlank() }
+            val categoryNames = if (ids.isEmpty()) emptyMap() else {
+                val result = SupabaseRest.request(
+                    "GET", "categories?select=id,name&id=in.${SupabaseRest.enc(SupabaseRest.inList(ids.distinct()))}", token
+                )
+                if (result.ok) result.rows.associate { it.optString("id") to it.optString("name") } else emptyMap()
+            }
+            saveSearchEntry(SearchHistoryEntry(
+                id = "",
+                typedInput = product.title,
+                isProductClick = true,
+                productId = product.id,
+                productName = product.title,
+                categoryId = product.categoryId.takeIf { it.isNotBlank() },
+                categoryName = categoryNames[product.categoryId],
+                subCategoryId = product.subCategoryId.takeIf { it.isNotBlank() },
+                subCategoryName = categoryNames[product.subCategoryId],
+                productTypeId = product.productTypeId.takeIf { it.isNotBlank() },
+                productTypeName = categoryNames[product.productTypeId]
+            ))
+        }
+    }
+
+    private fun saveSearchEntry(entry: SearchHistoryEntry) {
+        val value = entry.typedInput.trim()
         if (value.isEmpty()) return
+        val saved = entry.copy(
+            id = entry.id.ifBlank { "local_${System.currentTimeMillis()}" },
+            typedInput = value
+        )
         val uid = session?.userId
         if (uid == null) {
-            writeGuestHistory(listOf(value) + guestHistory())
-            _recentSearches.value = dedupeHistory(guestHistory())
+            writeGuestHistoryEntries(listOf(saved) + guestHistoryEntries())
+            publishSearchHistory(guestHistoryEntries())
             return
         }
         authScope.launch {
             val token = validToken() ?: return@launch
-            val body = JSONObject().put("user_id", uid).put("typed_input", value).put("is_product_click", false)
+            val body = JSONObject()
+                .put("user_id", uid)
+                .put("typed_input", saved.typedInput)
+                .put("is_product_click", saved.isProductClick)
+                .put("product_id", saved.productId ?: JSONObject.NULL)
+                .put("product_name", saved.productName ?: JSONObject.NULL)
+                .put("category_id", saved.categoryId ?: JSONObject.NULL)
+                .put("category_name", saved.categoryName ?: JSONObject.NULL)
+                .put("sub_category_id", saved.subCategoryId ?: JSONObject.NULL)
+                .put("sub_category_name", saved.subCategoryName ?: JSONObject.NULL)
+                .put("product_type_id", saved.productTypeId ?: JSONObject.NULL)
+                .put("product_type_name", saved.productTypeName ?: JSONObject.NULL)
             SupabaseRest.request("POST", "user_search_history", token, body.toString())
             loadSearchHistory()
         }
@@ -187,8 +320,9 @@ object BzeadRepository {
     fun deleteSearch(typed: String) {
         val uid = session?.userId
         if (uid == null) {
-            writeGuestHistory(guestHistory().filter { !it.equals(typed, ignoreCase = true) })
-            _recentSearches.value = dedupeHistory(guestHistory())
+            val remaining = guestHistoryEntries().filterNot { it.typedInput.equals(typed, ignoreCase = true) }
+            writeGuestHistoryEntries(remaining)
+            publishSearchHistory(remaining)
             return
         }
         authScope.launch {
@@ -201,14 +335,14 @@ object BzeadRepository {
     fun clearSearchHistory() {
         val uid = session?.userId
         if (uid == null) {
-            writeGuestHistory(emptyList())
-            _recentSearches.value = emptyList()
+            writeGuestHistoryEntries(emptyList())
+            publishSearchHistory(emptyList())
             return
         }
         authScope.launch {
             val token = validToken() ?: return@launch
             SupabaseRest.request("DELETE", "user_search_history?user_id=eq.$uid", token)
-            _recentSearches.value = emptyList()
+            publishSearchHistory(emptyList())
         }
     }
 
@@ -405,17 +539,45 @@ object BzeadRepository {
 
     /** Web `useWishlistSync`: merge local and backend wishlists, then push the merged set. */
     private suspend fun loadWishlist(uid: String) {
-        val token = validToken() ?: return
-        val remote = UserDataApi.fetchWishlist(token, uid) ?: return
-        val localIds = _wishlistProductIds.value.filter { UserDataApi.isUuid(it) }
-        val remoteIds = remote.map { it.id }.toSet()
-        val missing = localIds.filterNot { it in remoteIds }
-        if (missing.isNotEmpty()) UserDataApi.addWishlist(token, uid, missing)
-        val localProducts = missing.mapNotNull { getProductById(it) }
-        if (session?.userId != uid) return
-        _wishlistProducts.value = remote + localProducts
-        _wishlistProductIds.value = remoteIds + missing
-        saveWishlistLocally()
+        _isWishlistLoading.value = true
+        try {
+            val token = validToken() ?: return
+            val remote = UserDataApi.fetchWishlist(token, uid) ?: return
+            val localIds = _wishlistProductIds.value.filter { UserDataApi.isUuid(it) }
+            val remoteIds = remote.map { it.id }.toSet()
+            val missing = localIds.filterNot { it in remoteIds }
+            if (missing.isNotEmpty()) UserDataApi.addWishlist(token, uid, missing)
+            val localProducts = missing.mapNotNull { getProductById(it) }
+            if (session?.userId != uid) return
+            _wishlistProducts.value = remote + localProducts
+            _wishlistProductIds.value = remoteIds + missing
+            saveWishlistLocally()
+        } finally {
+            _isWishlistLoading.value = false
+        }
+    }
+
+    suspend fun removeWishlistProduct(productId: String): String? {
+        val uid = session?.userId ?: return "Please sign in to manage your wishlist."
+        if (!UserDataApi.isUuid(productId)) {
+            _wishlistProductIds.value = _wishlistProductIds.value - productId
+            _wishlistProducts.value = _wishlistProducts.value.filterNot { it.id == productId }
+            saveWishlistLocally()
+            return null
+        }
+        val token = validToken() ?: return "Session expired. Please sign in again."
+        val result = UserDataApi.removeWishlist(token, uid, productId)
+        if (result.ok) {
+            _wishlistProductIds.value = _wishlistProductIds.value - productId
+            _wishlistProducts.value = _wishlistProducts.value.filterNot { it.id == productId }
+            saveWishlistLocally()
+        }
+        return result.error
+    }
+
+    fun refreshWishlist() {
+        val uid = session?.userId ?: return
+        authScope.launch { loadWishlist(uid) }
     }
 
     fun isInCart(productId: String): Boolean {
@@ -442,24 +604,44 @@ object BzeadRepository {
     }
 
     private suspend fun loadNotifications(uid: String) {
-        val token = validToken() ?: return
-        val (fetched, visible) = UserDataApi.fetchNotifications(token, uid, 0) ?: return
-        if (session?.userId != uid) return
-        _notifications.value = visible
-        notificationOffset = fetched
-        _hasMoreNotifications.value = fetched >= UserDataApi.NOTIFICATION_PAGE_SIZE
-        UserDataApi.fetchBuyerUnreadCount(token, uid)?.let { _unreadCount.value = it }
+        _notificationsLoading.value = true
+        _notificationsError.value = null
+        try {
+            val token = validToken() ?: run {
+                _notificationsError.value = "Session expired. Please sign in again."
+                return
+            }
+            val result = UserDataApi.fetchNotifications(token, uid, 0)
+            if (result == null) {
+                _notificationsError.value = "Failed to load notifications. Please try again."
+                return
+            }
+            val (fetched, visible) = result
+            if (session?.userId != uid) return
+            _notifications.value = visible
+            notificationOffset = fetched
+            _hasMoreNotifications.value = fetched >= UserDataApi.NOTIFICATION_PAGE_SIZE
+            UserDataApi.fetchBuyerUnreadCount(token, uid)?.let { _unreadCount.value = it }
+        } finally {
+            _notificationsLoading.value = false
+        }
     }
 
     fun loadMoreNotifications() {
-        if (!_hasMoreNotifications.value) return
+        if (!_hasMoreNotifications.value || _notificationsLoadingMore.value) return
         val uid = session?.userId ?: return
         authScope.launch {
-            val token = validToken() ?: return@launch
-            val (fetched, visible) = UserDataApi.fetchNotifications(token, uid, notificationOffset) ?: return@launch
-            _notifications.value = _notifications.value + visible
-            notificationOffset += fetched
-            _hasMoreNotifications.value = fetched >= UserDataApi.NOTIFICATION_PAGE_SIZE
+            _notificationsLoadingMore.value = true
+            try {
+                val token = validToken() ?: return@launch
+                val result = UserDataApi.fetchNotifications(token, uid, notificationOffset) ?: return@launch
+                val (fetched, visible) = result
+                _notifications.value = _notifications.value + visible
+                notificationOffset += fetched
+                _hasMoreNotifications.value = fetched >= UserDataApi.NOTIFICATION_PAGE_SIZE
+            } finally {
+                _notificationsLoadingMore.value = false
+            }
         }
     }
 
@@ -468,15 +650,106 @@ object BzeadRepository {
         authScope.launch { loadNotifications(uid) }
     }
 
+    suspend fun fetchOrderTrackingEvents(orderId: String): List<OrderTrackingEvent> {
+        val token = validToken() ?: return emptyList()
+        return UserDataApi.fetchOrderTrackingEvents(token, orderId)
+    }
+
+    suspend fun fetchOrderReturns(orderId: String): List<OrderReturnRecord> {
+        val token = validToken() ?: return emptyList()
+        return UserDataApi.fetchOrderReturns(token, orderId)
+    }
+
+    suspend fun fetchOrderStatusHistory(orderId: String): List<OrderStatusHistoryRecord> {
+        val token = validToken() ?: return emptyList()
+        return UserDataApi.fetchOrderStatusHistory(token, orderId)
+    }
+
+    suspend fun cancelBuyerOrder(orderId: String, reason: String): String? {
+        val uid = session?.userId ?: return "Please sign in to cancel this order."
+        val token = validToken() ?: return "Session expired. Please sign in again."
+        val error = UserDataApi.cancelBuyerOrder(token, orderId, reason)
+        if (error == null) {
+            val order = _orders.value.firstOrNull { it.id == orderId }
+            _orders.value = _orders.value.map {
+                if (it.id == orderId) it.copy(status = OrderStatus.CANCELLED) else it
+            }
+            UserDataApi.createBuyerOrderNotification(
+                token, uid, "order_cancelled", "Order Cancelled",
+                "Order #${order?.orderNumber.orEmpty()} was cancelled. Reason: $reason",
+                orderId, order?.orderNumber.orEmpty()
+            )
+            loadNotifications(uid)
+        }
+        return error
+    }
+
+    suspend fun requestOrderReturn(
+        orderId: String,
+        orderItemId: String?,
+        reason: String,
+        description: String,
+        quantity: Int
+    ): String? {
+        val uid = session?.userId ?: return "Please sign in to request a return."
+        val token = validToken() ?: return "Session expired. Please sign in again."
+        val (returnId, error) = UserDataApi.requestOrderReturn(
+            token, uid, orderId, orderItemId, reason, description, quantity
+        )
+        if (error == null) {
+            val order = _orders.value.firstOrNull { it.id == orderId }
+            _orders.value = _orders.value.map {
+                if (it.id == orderId) it.copy(status = OrderStatus.RETURN_REQUESTED) else it
+            }
+            UserDataApi.createBuyerOrderNotification(
+                token, uid, "return_requested", "Return Requested",
+                "Return requested for order #${order?.orderNumber.orEmpty()}. Reason: $reason",
+                orderId, order?.orderNumber.orEmpty(), returnId
+            )
+            loadNotifications(uid)
+        }
+        return error
+    }
+
+    suspend fun deleteNotification(id: String): String? {
+        val uid = session?.userId ?: return "Please sign in to manage notifications."
+        val token = validToken() ?: return "Session expired. Please sign in again."
+        val result = UserDataApi.deleteNotification(token, uid, id)
+        if (result.ok) {
+            val removed = _notifications.value.firstOrNull { it.id == id }
+            _notifications.value = _notifications.value.filterNot { it.id == id }
+            if (removed?.isRead == false) _unreadCount.value = maxOf(0, _unreadCount.value - 1)
+        }
+        return result.error
+    }
+
     fun refreshOrders() {
         val uid = session?.userId ?: return
         authScope.launch { loadOrders(uid) }
     }
 
+    suspend fun refreshOrdersNow() {
+        val uid = session?.userId ?: return
+        loadOrders(uid)
+    }
+
     private suspend fun loadOrders(uid: String) {
-        val token = validToken() ?: return
-        val list = UserDataApi.fetchOrders(token, uid) ?: return
-        if (session?.userId == uid) _orders.value = list
+        _ordersLoading.value = true
+        _ordersError.value = null
+        try {
+            val token = validToken() ?: run {
+                _ordersError.value = "Session expired. Please sign in again."
+                return
+            }
+            val list = UserDataApi.fetchOrders(token, uid)
+            if (list == null) {
+                _ordersError.value = "Failed to load orders. Please try again."
+                return
+            }
+            if (session?.userId == uid) _orders.value = list
+        } finally {
+            _ordersLoading.value = false
+        }
     }
 
     private suspend fun loadAddresses(uid: String) {
@@ -485,6 +758,16 @@ object BzeadRepository {
         if (session?.userId != uid) return
         _addresses.value = list
         selectedAddress.value = list.firstOrNull { it.isDefault } ?: list.firstOrNull()
+    }
+
+    suspend fun refreshAddresses(): Boolean {
+        val uid = session?.userId ?: return false
+        val token = validToken() ?: return false
+        val list = UserDataApi.fetchAddresses(token, uid) ?: return false
+        if (session?.userId != uid) return false
+        _addresses.value = list
+        selectedAddress.value = list.firstOrNull { it.isDefault } ?: list.firstOrNull()
+        return true
     }
 
     /** Creates the address on the backend (first address becomes default, like the web). Returns an error message or null. */
@@ -577,10 +860,167 @@ object BzeadRepository {
         }
     }
 
-    suspend fun updateUserProfile(fullName: String, phone: String): Boolean {
-        _userName.value = fullName
-        _userPhone.value = phone
-        return true
+    suspend fun updateUserProfile(fullName: String, phone: String): Boolean =
+        saveUserProfile(fullName, phone) == null
+
+    suspend fun saveUserProfile(fullName: String, phone: String): String? {
+        val uid = session?.userId ?: return "User not authenticated"
+        val token = validToken() ?: return "Session expired. Please sign in again."
+        if (fullName.trim().isEmpty()) return "Full name is required"
+        val cleanPhone = phone.trim()
+        val body = JSONObject()
+            .put("full_name", fullName.trim())
+            .put("phone", if (cleanPhone.isEmpty()) JSONObject.NULL else cleanPhone)
+        val result = SupabaseRest.request(
+            "PATCH", "profiles?id=eq.$uid", token, body.toString(), prefer = "return=minimal"
+        )
+        if (!result.ok) return result.error ?: "Failed to update profile"
+        _userName.value = fullName.trim()
+        _userPhone.value = phone.trim().ifEmpty { null }
+        return null
+    }
+
+    suspend fun saveProfileField(field: String, value: String): String? {
+        val uid = session?.userId ?: return "User not authenticated"
+        val token = validToken() ?: return "Session expired. Please sign in again."
+        val trimmed = value.trim()
+        if (trimmed.isEmpty()) return "Please enter a value before saving."
+        val column = when (field) {
+            "name" -> "full_name"
+            "phone" -> "phone"
+            "country" -> "country_id"
+            else -> return "Unsupported profile field."
+        }
+        if (field == "phone" && trimmed.count { it.isDigit() } < 6) {
+            return "Please enter a valid phone number."
+        }
+        val result = SupabaseRest.request(
+            "PATCH", "profiles?id=eq.$uid", token,
+            JSONObject().put(column, trimmed).toString(), prefer = "return=representation"
+        )
+        if (!result.ok) return result.error ?: "Failed to update $field. Please try again."
+        if (result.rows.length() == 0) {
+            return if (field == "country") {
+                "Profile update returned no data — row may not exist or RLS blocked the write."
+            } else "Profile update returned no data — please try again."
+        }
+        when (field) {
+            "name" -> _userName.value = trimmed
+            "phone" -> _userPhone.value = trimmed
+            "country" -> {
+                _userCountryId.value = trimmed
+                val country = SupabaseClient.fetchCountries().firstOrNull { it.id == trimmed }
+                _userCountry.value = country?.countryName
+                SupabaseAuth.updateUser(
+                    token, JSONObject().put("data", JSONObject().put("country_id", trimmed))
+                )
+            }
+        }
+        return null
+    }
+
+    suspend fun loadUserCountry() {
+        val uid = session?.userId ?: return
+        val token = validToken() ?: return
+        val result = SupabaseRest.request("GET", "profiles?select=country_id&id=eq.$uid", token)
+        val profile = result.rows.optJSONObject(0)
+        val metadata = session?.userMetadata ?: JSONObject()
+        val id = profile?.takeUnless { it.isNull("country_id") }
+            ?.optString("country_id")?.takeIf { it.isNotBlank() }
+            ?: metadata.optString("country_id").takeIf { it.isNotBlank() && it != "null" }
+        if (result.ok && profile == null) {
+            val profileBody = JSONObject()
+                .put("id", uid)
+                .put("email", _userEmail.value ?: session?.email.orEmpty())
+                .put("full_name", _userName.value ?: metadata.optString("full_name"))
+                .put("phone", _userPhone.value ?: metadata.optString("phone"))
+            id?.let { profileBody.put("country_id", it) }
+            SupabaseRest.request(
+                "POST", "profiles?on_conflict=id", token, profileBody.toString(),
+                prefer = "resolution=merge-duplicates,return=minimal"
+            )
+        } else if (profile != null && profile.isNull("country_id") && id != null) {
+            SupabaseAuth.fillProfileCountry(token, uid, id)
+        }
+        _userCountryId.value = id
+        _userCountry.value = id?.let { countryId ->
+            SupabaseClient.fetchCountries().firstOrNull { it.id == countryId }?.countryName
+        }
+    }
+
+    private fun defaultNotificationPreferences(): JSONObject = JSONObject()
+        .put("emailNotifications", true)
+        .put("orderUpdates", true)
+        .put("promotions", false)
+        .put("push_enabled", true)
+        .put("push_orders", true)
+        .put("push_returns", true)
+        .put("push_account", true)
+        .put("push_system", true)
+        .put("push_promotions", false)
+
+    private fun mergeNotificationPreferences(raw: Any?): JSONObject {
+        val source = when (raw) {
+            is JSONObject -> raw
+            is String -> runCatching { JSONObject(raw) }.getOrElse { JSONObject() }
+            else -> JSONObject()
+        }
+        val merged = defaultNotificationPreferences()
+        val keys = source.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            merged.put(key, source.opt(key))
+        }
+        listOf("emailNotifications", "orderUpdates", "promotions", "push_enabled", "push_orders", "push_returns", "push_account", "push_system", "push_promotions")
+            .forEach { key ->
+                if (source.opt(key) !is Boolean) merged.put(key, defaultNotificationPreferences().opt(key))
+            }
+        return merged
+    }
+
+    suspend fun loadNotificationPreferences(): JSONObject? {
+        val uid = session?.userId ?: return null
+        val token = validToken() ?: return null
+        val result = SupabaseRest.request(
+            "GET", "profiles?select=notification_preferences&id=eq.$uid", token
+        )
+        if (!result.ok) return null
+        val value = result.rows.optJSONObject(0)?.opt("notification_preferences")
+        return mergeNotificationPreferences(value)
+    }
+
+    suspend fun saveNotificationPreferences(updates: JSONObject): String? {
+        val uid = session?.userId ?: return "User not authenticated"
+        val token = validToken() ?: return "Session expired. Please sign in again."
+        val existingResult = SupabaseRest.request(
+            "GET", "profiles?select=notification_preferences&id=eq.$uid", token
+        )
+        if (!existingResult.ok) return existingResult.error ?: "Failed to update notifications"
+        val raw = existingResult.rows.optJSONObject(0)?.opt("notification_preferences")
+        val merged = mergeNotificationPreferences(raw)
+        val keys = updates.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            merged.put(key, updates.opt(key))
+        }
+        val result = SupabaseRest.request(
+            "PATCH", "profiles?id=eq.$uid", token,
+            JSONObject().put("notification_preferences", merged).toString(), prefer = "return=minimal"
+        )
+        return if (result.ok) null else result.error ?: "Failed to update notifications"
+    }
+
+    suspend fun changeUserPassword(email: String, currentPassword: String, newPassword: String): String? {
+        val verified = SupabaseAuth.signInWithPassword(email.trim().lowercase(), currentPassword)
+        val verifiedSession = verified.session ?: return "Current password is incorrect"
+        if (verifiedSession.userId != session?.userId) return "Current password is incorrect"
+        val result = SupabaseAuth.updateUser(
+            verifiedSession.accessToken, JSONObject().put("password", newPassword)
+        )
+        if (!result.ok) return result.error ?: "Failed to change password"
+        session = verifiedSession
+        sessionStore?.saveRefreshToken(verifiedSession.refreshToken)
+        return null
     }
 
     // ---------- Checkout (port of the web OrderSummary + Checkout Razorpay flow) ----------
@@ -604,6 +1044,8 @@ object BzeadRepository {
     private val _tempOrders = MutableStateFlow<List<Order>>(emptyList())
 
     fun findOrder(id: String): Order? = _orders.value.firstOrNull { it.id == id } ?: _tempOrders.value.firstOrNull { it.id == id }
+
+    fun isTemporaryOrder(id: String): Boolean = _tempOrders.value.any { it.id == id }
 
     private fun activeCartItems(): List<CartItem> {
         val selected = checkoutSelectedIds.value
@@ -676,6 +1118,33 @@ object BzeadRepository {
             if (tat.maxTatDays > 0 && tat.maxExpectedDate.isNotEmpty()) eta = tat.maxExpectedDate
         }
         return OrderSummaryData(items, quote, address, missing, serviceable, eta)
+    }
+
+    /** Web Cart.tsx price effect: verified variant prices, unavailable lines and public prices for the given cart lines. */
+    suspend fun loadCartPrices(cart: List<CartItem>): CartPriceResult {
+        val token = validToken() ?: SupabaseClient.ANON_KEY
+        val items = cart.map {
+            CheckoutItem(
+                cartItemId = it.id, productId = it.product.id, productName = it.product.title, quantity = it.quantity,
+                unitPrice = it.unitPrice, sellerId = null, selectedSize = it.selectedSize, selectedColor = it.selectedColor,
+                selectedVariantId = it.selectedVariantId, selectedVariantSku = it.selectedVariantSku, productImage = it.product.imageUrl
+            )
+        }
+        return CheckoutApi.verifyCartPrices(items, "IN", token)
+    }
+
+    /** Web ShippingAddress pricing effect: quotes the selected cart lines to the given destination. Returns an error message or null. */
+    suspend fun quoteForAddress(country: String, pinCode: String): String? {
+        return try {
+            val token = checkoutToken()
+            val base = buildCheckoutItems(token)
+            if (base.isNotEmpty()) CheckoutApi.calculateQuote(base, country, pinCode, token)
+            null
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            e.message?.takeIf { it.isNotBlank() } ?: "Unable to load checkout pricing. Please refresh and try again."
+        }
     }
 
     /** Web OrderSummary "Proceed to payment" stock re-check. Returns an error message or null. */
@@ -897,16 +1366,24 @@ object BzeadRepository {
                 _wishlistProductIds.value = (0 until arr.length()).map { arr.getString(it) }.toSet()
             } catch (_: Exception) { }
         }
-        val refreshToken = store.loadRefreshToken() ?: return
+        val refreshToken = store.loadRefreshToken()
+        if (refreshToken == null) {
+            _isAuthLoading.value = false
+            return
+        }
         authScope.launch {
-            val res = SupabaseAuth.refresh(refreshToken)
-            val fresh = res.session
-            if (fresh == null) {
-                // Only drop the stored session when the server rejected it, not on network failure.
-                if (res.body != null) store.clear()
-                return@launch
+            try {
+                val res = SupabaseAuth.refresh(refreshToken)
+                val fresh = res.session
+                if (fresh == null) {
+                    // Only drop the stored session when the server rejected it, not on network failure.
+                    if (res.body != null) store.clear()
+                    return@launch
+                }
+                if (!establishSession(fresh).first) clearLocalSession()
+            } finally {
+                _isAuthLoading.value = false
             }
-            if (!establishSession(fresh).first) clearLocalSession()
         }
     }
 
@@ -940,11 +1417,16 @@ object BzeadRepository {
         _userName.value = null
         _userEmail.value = null
         _userPhone.value = null
+        _userCountry.value = null
+        _userCountryId.value = null
     }
 
     /** Loads the profile, rejects banned users, and publishes the session. Returns (ok, errorMessage). */
-    private suspend fun establishSession(s: AuthSession): Pair<Boolean, String?> {
-        val profile = SupabaseAuth.fetchProfile(s.accessToken, s.userId)
+    private suspend fun establishSession(
+        s: AuthSession,
+        fetchedProfile: JSONObject? = null
+    ): Pair<Boolean, String?> {
+        val profile = fetchedProfile ?: SupabaseAuth.fetchProfile(s.accessToken, s.userId)
         if (profile?.optBoolean("is_banned", false) == true) {
             SupabaseAuth.signOut(s.accessToken)
             return Pair(false, "Your account has been suspended. Please contact support.")
@@ -983,7 +1465,7 @@ object BzeadRepository {
             SupabaseAuth.signOut(s.accessToken)
             return LoginResult(success = false, role = role)
         }
-        val (ok, err) = establishSession(s)
+        val (ok, err) = establishSession(s, profile)
         return if (ok) LoginResult(success = true, role = role) else LoginResult(false, err)
     }
 
@@ -994,6 +1476,9 @@ object BzeadRepository {
             m.contains("Email not confirmed") -> "Please verify your email first. Check your inbox for the OTP code."
             m.contains("Database error querying schema") ->
                 "Your account auth record is incomplete. Please contact support/admin to repair the account setup."
+            m.contains("Network error", ignoreCase = true) || m.contains("failed to fetch", ignoreCase = true) ||
+                m.contains("networkerror", ignoreCase = true) || m.contains("timed out", ignoreCase = true) ->
+                "Network error — please check your internet connection and try again."
             m.isBlank() -> "Login failed. Please try again."
             else -> m
         }
@@ -1023,7 +1508,7 @@ object BzeadRepository {
 
     /** Verifies the signup OTP; success signs the user in. Returns [ALREADY_CONFIRMED] if the account is already verified. */
     suspend fun verifyOtp(email: String, code: String, type: String): Pair<Boolean, String?> {
-        val res = SupabaseAuth.verifyOtp(email.trim().lowercase(), code, "signup")
+        val res = SupabaseAuth.verifyOtp(email.trim().lowercase(), code, type)
         val s = res.session
         if (s == null) {
             return if (res.error?.contains("User already registered") == true) Pair(false, ALREADY_CONFIRMED)
@@ -1031,8 +1516,11 @@ object BzeadRepository {
         }
         val (ok, err) = establishSession(s)
         if (!ok) return Pair(false, err)
-        s.userMetadata.optStringOrNull("country_id")?.let {
-            SupabaseAuth.fillProfileCountry(s.accessToken, s.userId, it)
+        val signupUpdates = JSONObject()
+        s.userMetadata.optStringOrNull("country_id")?.let { signupUpdates.put("country_id", it) }
+        s.userMetadata.optStringOrNull("full_name")?.let { signupUpdates.put("full_name", it) }
+        if (signupUpdates.length() > 0) {
+            SupabaseAuth.saveSignupProfile(s.accessToken, s.userId, s.email.ifBlank { email }, signupUpdates)
         }
         return Pair(true, null)
     }

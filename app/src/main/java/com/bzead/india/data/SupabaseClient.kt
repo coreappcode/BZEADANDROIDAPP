@@ -9,6 +9,8 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
+data class SearchProductPage(val products: List<Product>, val totalCount: Int)
+
 object SupabaseClient {
 
     internal const val HOST_URL = "https://aiiefgjfftmerayihpbv.supabase.co"
@@ -131,6 +133,8 @@ object SupabaseClient {
             sellerName = "",
             category = category,
             categoryId = category,
+            subCategoryId = o.text("sub_category"),
+            productTypeId = o.text("product_type"),
             inStock = stock > 0,
             stockCount = stock,
             description = o.text("description"),
@@ -142,7 +146,8 @@ object SupabaseClient {
             itemCondition = o.text("item_condition").ifEmpty { null },
             hasVariants = o.optBoolean("has_variants", false),
             offerSummary = firstActiveOfferSummary(o.optJSONArray("offer_rules")),
-            specifications = emptyMap()
+            specifications = emptyMap(),
+            createdAt = o.text("created_at")
         )
     }
 
@@ -275,22 +280,31 @@ object SupabaseClient {
         HomeSections(section("featured"), section("hot-deals"), section("trending"), !noSponsoredData)
     }
 
-    /** Search through the `search_products_catalog` RPC, then hydrates the approved products (web `searchPublicProductsByKeywords`). */
-    suspend fun searchProducts(query: String, limit: Int = 50, offset: Int = 0): List<Product>? = withContext(Dispatchers.IO) {
-        val body = JSONObject().put("p_query_text", query).put("p_result_limit", limit).put("p_result_offset", offset)
+    /** Search results and total count from the web `search_products_catalog` RPC. */
+    suspend fun searchProductPage(query: String, limit: Int = 50, offset: Int = 0): SearchProductPage? = withContext(Dispatchers.IO) {
+        if (query.isBlank()) return@withContext SearchProductPage(emptyList(), 0)
+        val body = JSONObject().put("p_query_text", query.trim().replace(Regex("\\s+"), " ").take(200))
+            .put("p_result_limit", limit).put("p_result_offset", offset)
         val ranked = SupabaseRest.request("POST", "rpc/search_products_catalog", ANON_KEY, body.toString())
         if (!ranked.ok) return@withContext null
-        val ids = ranked.rows.objects().map { it.text("id") }
-        if (ids.isEmpty()) return@withContext emptyList()
+        val rankedRows = ranked.rows.objects()
+        val totalCount = rankedRows.firstOrNull()?.optInt("total_count", 0) ?: 0
+        val ids = rankedRows.map { it.text("id") }
+        if (ids.isEmpty()) return@withContext SearchProductPage(emptyList(), totalCount)
         val r = SupabaseRest.request(
             "GET",
-            "products?select=*,product_variants(*)&id=in.${SupabaseRest.enc(SupabaseRest.inList(ids))}&approval_status=eq.approved&is_active=eq.true",
+            "products?select=*,product_variants(*),offer_rules(*)&id=in.${SupabaseRest.enc(SupabaseRest.inList(ids))}&approval_status=eq.approved&is_active=eq.true",
             ANON_KEY
         )
         if (!r.ok) return@withContext null
         val byId = r.rows.objects().associate { it.text("id") to parseProduct(it) }
-        withPublicPrices(ids.mapNotNull { byId[it] })
+        val products = withPublicPrices(ids.mapNotNull { byId[it] })
+        SearchProductPage(products, totalCount)
     }
+
+    /** Backward-compatible product-only search used by existing repository callers. */
+    suspend fun searchProducts(query: String, limit: Int = 50, offset: Int = 0): List<Product>? =
+        searchProductPage(query, limit, offset)?.products
 
     /** Product detail row with variants (web product page: `products` + `product_variants`). */
     suspend fun fetchProductDetail(id: String): Product? = withContext(Dispatchers.IO) {

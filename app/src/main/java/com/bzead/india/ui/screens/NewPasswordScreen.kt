@@ -1,26 +1,35 @@
 package com.bzead.india.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,6 +38,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
@@ -49,6 +59,7 @@ fun NewPasswordScreen(
     code: String,
     onNavigateBack: () -> Unit,
     onPasswordReset: () -> Unit,
+    onNavigateHome: () -> Unit = onNavigateBack,
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
@@ -59,15 +70,19 @@ fun NewPasswordScreen(
     var loading by remember { mutableStateOf(false) }
     var success by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var showNewPassword by remember { mutableStateOf(false) }
+    var showConfirmPassword by remember { mutableStateOf(false) }
+    var passwordErrors by remember { mutableStateOf<List<String>>(emptyList()) }
 
     fun handleSubmit() {
         error = null
-        if (newPassword.isEmpty()) {
-            error = "Password is required"
+        if (newPassword.isEmpty() || confirmPassword.isEmpty()) {
+            error = "Please enter both passwords"
             return
         }
         val pwErrors = Validation.validatePassword(newPassword)
         if (pwErrors.isNotEmpty()) {
+            passwordErrors = pwErrors
             error = pwErrors.first()
             return
         }
@@ -75,6 +90,7 @@ fun NewPasswordScreen(
             error = "Passwords do not match"
             return
         }
+        passwordErrors = emptyList()
         loading = true
         scope.launch {
             val (ok, msg) = BzeadRepository.confirmPasswordReset(email, code, newPassword)
@@ -92,9 +108,9 @@ fun NewPasswordScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFFF8FAFC))
+            .background(Brush.linearGradient(listOf(Color(0xFFDBEAFE), Color(0xFFEFF6FF), Color.White)))
     ) {
-        BuyerAuthNav(onNavigateBack = onNavigateBack)
+        BuyerAuthNav(onNavigateBack = onNavigateBack, onNavigateHome = onNavigateHome)
 
         Column(
             modifier = Modifier
@@ -111,13 +127,51 @@ fun NewPasswordScreen(
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
-                    AuthCardHeader(title = "Set New Password", subtitle = "Choose a strong password for $email")
+                    if (success) {
+                        AuthBrandMark()
+                        Spacer(modifier = Modifier.height(20.dp))
+                        androidx.compose.foundation.layout.Box(
+                            modifier = Modifier
+                                .size(56.dp)
+                                .background(Color(0xFFDCFCE7), RoundedCornerShape(28.dp))
+                                .align(Alignment.CenterHorizontally),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF16A34A), modifier = Modifier.size(24.dp))
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Password Reset Successful",
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFF0F172A),
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                        Text(
+                            text = "Your password has been updated successfully. Redirecting to login...",
+                            fontSize = 14.sp,
+                            color = Color(0xFF64748B),
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                        CircularProgressIndicator(
+                            color = Color.Black,
+                            modifier = Modifier.padding(top = 16.dp).size(28.dp).align(Alignment.CenterHorizontally),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.clickable { onNavigateBack() }.padding(bottom = 12.dp).testTag("new_password_back_link")
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = Color(0xFF64748B), modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Back", fontSize = 12.sp, color = Color(0xFF64748B), fontWeight = FontWeight.Medium)
+                    }
+                    AuthCardHeader(title = "Set new password", subtitle = "Enter a strong password for your account")
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    if (success) {
-                        AuthSuccessAlert(message = "Password reset successfully! Please login with your new password.")
-                        Spacer(modifier = Modifier.height(12.dp))
-                    }
                     if (error != null) {
                         AuthErrorAlert(message = error!!)
                         Spacer(modifier = Modifier.height(12.dp))
@@ -132,11 +186,24 @@ fun NewPasswordScreen(
                     )
                     OutlinedTextField(
                         value = newPassword,
-                        onValueChange = { newPassword = it; error = null },
+                        onValueChange = {
+                            newPassword = it
+                            error = null
+                            passwordErrors = if (it.isNotEmpty()) Validation.validatePassword(it) else emptyList()
+                        },
                         singleLine = true,
                         enabled = !loading && !success,
-                        visualTransformation = PasswordVisualTransformation(),
+                        visualTransformation = if (showNewPassword) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        trailingIcon = {
+                            IconButton(onClick = { showNewPassword = !showNewPassword }) {
+                                Icon(
+                                    imageVector = if (showNewPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                    contentDescription = if (showNewPassword) "Hide password" else "Show password"
+                                )
+                            }
+                        },
+                        placeholder = { Text("Enter new password") },
                         modifier = Modifier.fillMaxWidth().testTag("new_password_input"),
                         shape = RoundedCornerShape(8.dp),
                         colors = OutlinedTextFieldDefaults.colors(
@@ -144,6 +211,22 @@ fun NewPasswordScreen(
                             unfocusedBorderColor = Color(0xFFCBD5E1)
                         )
                     )
+                    if (newPassword.isNotEmpty()) {
+                        if (passwordErrors.isEmpty()) {
+                            Text(
+                                text = "Password is strong",
+                                color = Color(0xFF16A34A),
+                                fontSize = 11.sp,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        } else {
+                            Column(modifier = Modifier.padding(top = 4.dp)) {
+                                passwordErrors.forEach { issue ->
+                                    Text("• $issue", color = Color(0xFFDC2626), fontSize = 11.sp)
+                                }
+                            }
+                        }
+                    }
 
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
@@ -158,8 +241,17 @@ fun NewPasswordScreen(
                         onValueChange = { confirmPassword = it; error = null },
                         singleLine = true,
                         enabled = !loading && !success,
-                        visualTransformation = PasswordVisualTransformation(),
+                        visualTransformation = if (showConfirmPassword) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        trailingIcon = {
+                            IconButton(onClick = { showConfirmPassword = !showConfirmPassword }) {
+                                Icon(
+                                    imageVector = if (showConfirmPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                    contentDescription = if (showConfirmPassword) "Hide password" else "Show password"
+                                )
+                            }
+                        },
+                        placeholder = { Text("Confirm your password") },
                         modifier = Modifier.fillMaxWidth().testTag("confirm_password_input"),
                         shape = RoundedCornerShape(8.dp),
                         colors = OutlinedTextFieldDefaults.colors(
@@ -167,6 +259,14 @@ fun NewPasswordScreen(
                             unfocusedBorderColor = Color(0xFFCBD5E1)
                         )
                     )
+                    if (confirmPassword.isNotEmpty()) {
+                        Text(
+                            text = if (newPassword == confirmPassword) "Passwords match" else "Passwords do not match",
+                            color = if (newPassword == confirmPassword) Color(0xFF16A34A) else Color(0xFFDC2626),
+                            fontSize = 11.sp,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
 
                     Spacer(modifier = Modifier.height(20.dp))
                     Button(
@@ -174,7 +274,8 @@ fun NewPasswordScreen(
                             focusManager.clearFocus()
                             handleSubmit()
                         },
-                        enabled = !loading && !success && newPassword.isNotEmpty() && confirmPassword.isNotEmpty(),
+                        enabled = !loading && newPassword.isNotEmpty() && confirmPassword.isNotEmpty() &&
+                            Validation.validatePassword(newPassword).isEmpty() && newPassword == confirmPassword,
                         modifier = Modifier.fillMaxWidth().height(46.dp).testTag("reset_password_btn"),
                         shape = RoundedCornerShape(8.dp),
                         colors = ButtonDefaults.buttonColors(
@@ -187,6 +288,7 @@ fun NewPasswordScreen(
                         } else {
                             Text("Reset Password", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                         }
+                    }
                     }
                 }
             }

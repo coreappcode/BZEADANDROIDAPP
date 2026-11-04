@@ -10,13 +10,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.ShoppingCart
@@ -32,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -44,80 +45,66 @@ val AuthNavy = Color(0xFF1F2B3D)
 val AuthBlueStart = Color(0xFF2563EB)
 val AuthBlueEnd = Color(0xFF1D4ED8)
 
-const val BZEAD_AUTH_LOGO_URL = "https://res.cloudinary.com/ditsmq3r6/image/upload/v1793773017/logo_5_iaowjo.png"
+const val BZEAD_AUTH_LOGO_URL = "https://www.bzead.in/images/logo/invoice-logo.png"
+const val BZEAD_AUTH_NAV_LOGO_URL = "https://www.bzead.in/images/logo/logo.png"
 
 @Composable
 fun BuyerAuthNav(
     onNavigateBack: () -> Unit,
+    onNavigateHome: () -> Unit = onNavigateBack,
     modifier: Modifier = Modifier
 ) {
     Surface(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().height(60.dp),
         color = AuthNavy,
-        shadowElevation = 2.dp
+        shadowElevation = 0.dp
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
+                .padding(horizontal = 34.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(
-                onClick = onNavigateBack,
+            coil.compose.AsyncImage(
+                model = BZEAD_AUTH_NAV_LOGO_URL,
+                contentDescription = "BZEAD",
+                contentScale = androidx.compose.ui.layout.ContentScale.Fit,
                 modifier = Modifier
-                    .size(36.dp)
-                    .testTag("auth_nav_back")
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
-                    tint = Color.White
-                )
-            }
-            Spacer(modifier = Modifier.width(8.dp))
-            Box(
-                modifier = Modifier
+                    .width(106.dp)
                     .height(36.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color.White)
-                    .padding(horizontal = 8.dp, vertical = 3.dp)
-                    .clickable { onNavigateBack() },
-                contentAlignment = Alignment.Center
-            ) {
-                coil.compose.AsyncImage(
-                    model = BZEAD_AUTH_LOGO_URL,
-                    contentDescription = "Bzead Logo",
-                    contentScale = androidx.compose.ui.layout.ContentScale.Fit,
-                    modifier = Modifier.size(30.dp)
-                )
-            }
+                    .clickable { onNavigateHome() }
+            )
         }
+    }
+}
+
+@Composable
+fun BuyerAuthPageTitle(title: String) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = title,
+            fontSize = 21.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFF29272B),
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().padding(vertical = 17.dp)
+        )
+        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFEDF0F5)))
     }
 }
 
 @Composable
 fun AuthBrandMark(modifier: Modifier = Modifier) {
     Box(
-        modifier = modifier
-            .fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         contentAlignment = Alignment.Center
     ) {
-        Box(
-            modifier = Modifier
-                .height(48.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(Color.White)
-                .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(12.dp))
-                .padding(horizontal = 12.dp, vertical = 4.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            coil.compose.AsyncImage(
-                model = BZEAD_AUTH_LOGO_URL,
-                contentDescription = "Bzead Logo",
-                contentScale = androidx.compose.ui.layout.ContentScale.Fit,
-                modifier = Modifier.size(40.dp)
-            )
-        }
+        coil.compose.AsyncImage(
+            model = BZEAD_AUTH_LOGO_URL,
+            contentDescription = "BZEAD",
+            contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+            modifier = Modifier.height(44.dp).widthIn(max = 260.dp)
+        )
     }
 }
 
@@ -135,8 +122,8 @@ fun AuthCardHeader(
         Spacer(modifier = Modifier.height(12.dp))
         Text(
             text = title,
-            fontSize = 22.sp,
-            fontWeight = FontWeight.Bold,
+            fontSize = 24.sp,
+            fontWeight = FontWeight.SemiBold,
             color = Color(0xFF0F172A),
             textAlign = TextAlign.Center
         )
@@ -144,7 +131,8 @@ fun AuthCardHeader(
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = subtitle,
-                fontSize = 13.sp,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
                 color = Color(0xFF64748B),
                 textAlign = TextAlign.Center
             )
@@ -217,6 +205,7 @@ fun WrongRoleDialog(
     role: String,
     onDismiss: () -> Unit
 ) {
+    val uriHandler = LocalUriHandler.current
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             shape = RoundedCornerShape(16.dp),
@@ -274,15 +263,34 @@ fun WrongRoleDialog(
                     lineHeight = 16.sp
                 )
 
+                Text(
+                    text = "If you intend to shop on our platform, you will need to register for a Buyer account.",
+                    fontSize = 12.sp,
+                    color = Color(0xFF64748B),
+                    textAlign = TextAlign.Center,
+                    lineHeight = 16.sp,
+                    modifier = Modifier.padding(top = 12.dp)
+                )
+
                 Spacer(modifier = Modifier.height(20.dp))
+
+                if (role == "seller") {
+                    Button(
+                        onClick = { runCatching { uriHandler.openUri("https://www.bzead.in/seller") } },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth().height(44.dp)
+                    ) {
+                        Text("Open Seller Portal", fontWeight = FontWeight.SemiBold)
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
 
                 Button(
                     onClick = onDismiss,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE2E8F0), contentColor = Color(0xFF334155)),
                     shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(44.dp)
+                    modifier = Modifier.fillMaxWidth().height(44.dp)
                 ) {
                     Text("Dismiss", fontWeight = FontWeight.SemiBold)
                 }

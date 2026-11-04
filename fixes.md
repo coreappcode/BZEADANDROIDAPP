@@ -88,7 +88,7 @@ Both apps reference the same Supabase project. The primary mismatches are in And
 
 ### Product page: fake pincode estimator and variant selector were not at web parity
 
-**Status: FIXED in code (not compiled or run).** The fake "560103" estimator is removed. `DeliveryEstimateBox.kt` + `DeliveryEstimateApi.kt` port the web `DeliveryEstimate`/`useDeliveryEstimate`: the default (else first) saved address is auto-checked for signed-in users via Shiprocket serviceability + seller-pickup TAT, shows "Delivery by D MMM" / "Delivery not available to this location" / "Delivery details available at checkout", and has the address picker (search, saved addresses, Add New); "Use my current location" is intentionally not included (India-only app); the address form shows Country locked to India. `VariantSelection.kt` ports `productVariantSelection.ts`: colour circles (`resolveColorHex`), size buttons, in-stock defaults, `currentVariant`, variant-aware stock labels (Out Of Stock / Limited Stock / In Stock), variant images leading the gallery, price from `get_public_product_prices[_with_overrides]` with MRP and "(N% OFF)", Add To Cart / Buy Now disabled rules, login redirect for guests, and the cart item carrying size, colour, variant id, SKU and the public unit price.
+**Status: FIXED in code (not compiled or run).** The fake "560103" estimator is removed. `DeliveryEstimateBox.kt` + `DeliveryEstimateApi.kt` port the web `DeliveryEstimate`/`useDeliveryEstimate`: the default (else first) saved address is auto-checked for signed-in users via Shiprocket serviceability + seller-pickup TAT, shows "Delivery by D MMM" / "Delivery not available to this location" / "Delivery details available at checkout", and has the address picker (search, saved addresses, Add New); "automatic device-location lookup" is intentionally not included (India-only app); the address form shows Country locked to India. `VariantSelection.kt` ports `productVariantSelection.ts`: colour circles (`resolveColorHex`), size buttons, in-stock defaults, `currentVariant`, variant-aware stock labels (Out Of Stock / Limited Stock / In Stock), variant images leading the gallery, price from `get_public_product_prices[_with_overrides]` with MRP and "(N% OFF)", Add To Cart / Buy Now disabled rules, login redirect for guests, and the cart item carrying size, colour, variant id, SKU and the public unit price.
 
 **Not ported:** the offers section (`offer_rules`) and the size-guide modal.
 
@@ -219,6 +219,72 @@ The Android app does fetch banners, categories, and products from the matching S
 - **Similar Products:** 2-column grid, opens the tapped product.
 - **States:** loading skeleton and "Product not found".
 
-**Known differences (platform):** the web's slug redirect has no Android equivalent; the web's international/non-INR shipping lanes and guest detected-location are out of scope (India-only app) and the picker has no "Use my current location" (removed on the user's instruction).
+**Known differences (platform):** the web's slug redirect has no Android equivalent; the web's international/non-INR shipping lanes and guest detected-location are out of scope (India-only app) and the picker has no "automatic device-location lookup" (removed on the user's instruction).
 
 **Also fixed (uncompiled):** `DeliveryEstimateBox` now matches the web markup (guest line "Select delivery location ›", HOME/WORK label inline, truck status row in 11 px non-bold, full-screen address picker with search, "Saved addresses" + Add New, state and pincode in each row, selected highlight). `WriteReviewScreen` now matches the web `WriteReview.tsx` (header card, product card with public price, 36 px stars, 100/5000 counters, upload box, 2-column previews, benefits, terms box, Cancel / Submit disabled until terms are ticked, "Unable to Load Product" state). The wishlist heart is not on the web product page, so its removal is parity.
+
+## Cart/Checkout parity audit
+
+All changes are uncompiled (no Android SDK available).
+
+**Cart (`CartScreen.kt`, `CheckoutApi.verifyCartPrices`, `BzeadRepository.loadCartPrices`)**
+- Added per-item variant price verification (`product_variants` + public price RPCs), "Unavailable"/"Loading…" price states and unavailable-reason text.
+- Lines now show the unit price (web) rather than unit×qty; removed "Delivery Fee: Calculated at checkout", "Cart Summary" heading, in-summary Continue Shopping, header count subtitle.
+- Quantity capped at stock, 300 ms updating state, stock badges, remove-dialog text "Are you sure you want to remove this item from your cart?".
+- Move to Wishlist no longer toggles an already-wishlisted product off.
+- Checkout button checks/alerts in web order; "Updating prices…" card; web colours/sizes (62 px image, #ddd borders, sticky summary).
+
+**Shipping address (`ShippingAddressScreen.kt`, `BzeadRepository.quoteForAddress`)**
+- Rebuilt to web layout: numbered "1 Shipping Address" card, New Address/Saved toggles, default badge, web labels/placeholders, Delivery Notes, India-locked country, no location button, shipping-table check banner, web submit button states and validation/error messages.
+
+**Order summary (`OrderSummaryScreen.kt`)**
+- Web "Shipping Address" card with "Change address →"/Selected, "Review Items & Delivery" card with Estimated Delivery banner, 80 px item rows (Size/Color, unit price, Qty), "Order Summary" panel (Items, Savings, Shipping FREE/Not a Serviceable Area, Cash on Delivery Not Available), loading hints, warning/error/minimum-order banners, Order Total hidden when minimum unmet, "← Back to Cart", web button labels (Refreshing Shipping... / Pincode not serviceable / Checkout config unavailable / Proceed to Payment), Accepted payment chips.
+
+**Checkout/payment (`CheckoutScreen.kt`)**
+- Web error banner on top, items|View details + Total bar, billing fields (Street Address/City/State/Postal Code/Country), full Razorpay payment text, "PAY NOW — ₹x", "Processing...", "Payment Initialization Failed" screen with Try Again / Back to Review, "Initializing secure payment..." state, "← Back to Review", "256-bit SSL · Powered by Razorpay", "Leave Checkout?" Stay/Leave dialog.
+
+**Not portable / out of scope:** Stripe, international/FX/Maldives paths, COD (web `COD_DISABLED = true`), "automatic device-location lookup", shipping draft localStorage persistence (no public userId on Android), Cart `pricingFailed` dialog and `calculate_checkout_pricing` call (fallback-only on web), per-item delivery status line and tier selector in Order Summary (international-only).
+
+
+## Profile/Settings/Addresses parity audit
+
+**Status: FIXED (uncompiled — no Android SDK/kotlinc available).** Compared Android screens with web `Profile.tsx`, `Settings.tsx`, `AddressManagement.tsx`, `AddressForm.tsx`, `PushNotificationSettings.tsx` and the mobile `Header.tsx` account menu.
+
+- **Profile:** replaced the menu-only account screen with the web's Login and Security fields, inline name/phone/country updates, read-only email, password route, data-request/delete-account actions, logout confirmation, and first-three-address preview. Profile field writes now update `profiles`; country changes also update Auth user metadata. Account deletion remains a contact request, as it does on web.
+- **Settings:** profile saves now persist `full_name`/`phone`; password updates verify the current password with Supabase Auth before `updateUser`; email/order/promotion preferences load and save in `profiles.notification_preferences` using read-merge-write to preserve other JSON keys. Form validation, messages and tab field labels follow web copy.
+- **Addresses:** replaced the dialog-only form with the web's inline add/edit form and address-card fields (including email and delivery notes), field-level web validation, saved/default address actions, success/error state, loading state and explicit delete confirmation. The country input is fixed to India per the app requirement. Address reads refresh before showing the empty state.
+- **Mobile account menu:** already matches web mobile entries (Profile, Track Order, Notifications, Log Out); the web-only desktop Settings dropdown is not part of the mobile menu.
+
+**Platform-specific / not portable:** `Profile.tsx` detects/locks the profile country via browser `localStorage` key `beauzead_detected_location` and the `beauzead:location-updated` window event; Android has no equivalent browser event, so the profile country selector remains editable. `PushNotificationSettings.tsx` explicitly returns null on native platforms (`isNativePlatform`); Android therefore keeps the persisted email/order/promotion preferences but does not show browser-push controls. The web Profile contains no avatar upload code or avatar field, so there is no avatar flow to port. Footer and video-ad content remain intentionally omitted on Android per the standing requirement. Address country is locked to India as explicitly required, even though web `AddressForm.tsx` offers active-country options.
+
+## Auth pages parity audit
+
+**Status: FIXED in code (not compiled or run — Android SDK/kotlinc are unavailable).** Compared the buyer auth components/pages and `AuthContext.tsx` at web commit `b258437` with the Android auth screens and GoTrue client.
+
+- Corrected auth/header logo assets; added the mobile buyer page titles and matched the white background, navy logo bar, card borders, header logo sizing, and auth-brand mark.
+- Matched signup/recovery `redirect_to` values, signup metadata/profile persistence after OTP, profile-fetch retries, buyer-only role/ban handling, and login/network error text.
+- Fixed OTP verification to honor its requested type; aligned OTP labels/notices, resend countdown reset and messages, success/confirmed-account delays, and the signup vs password-reset back destinations.
+- Matched new-password copy, password visibility/strength/match feedback, validation and success state; added the web forgot-password transactional-email note and reset-success login message.
+- Added RouteGuard-equivalent redirects for buyer-only screens, preserved the requested destination through login, redirected logged-in users away from login/signup, waited for auth-session restoration before gating, and saved route state across Android activity recreation.
+
+**Not portable:** web `AuthContext.tsx` calls `syncOneSignalExternalId` for its JavaScript OneSignal integration; Android has no OneSignal code/dependency, so this identity sync is not mirrored. Web email redirects target the public `/otp-verification` and `/new-password` routes; `MainActivity` has no Android App Links/deep-link handler, so tapping those email links opens the web route rather than the native Compose screen (manual OTP entry in Android works). The web shell's desktop intro illustration is intentionally omitted: the buyer layout hides it at mobile widths, and Android must not show the prohibited welcome/marketing intro.
+
+## Orders/Notifications/Wishlist parity audit
+
+**Status: implemented in code; not compiled or run because this environment has no Android SDK/kotlinc.** Added order search/status filters, loading/error/empty states, buyer cancel/return forms, and Supabase-backed cancel/return history actions; expanded Order Details with item/tracking/invoice tabs, shipment/status histories and PDF saving; added notification read/category filters, delete confirmation, retry/load-more and refresh states; and added wishlist login routing, value/savings, removal confirmation/error handling, and product-page navigation. Order confirmation now distinguishes a still-pending payment/order from a confirmed order.
+
+**Backend/UI mismatches fixed:** order cancellation now calls `cancel_order_by_user`; return requests persist in `order_returns` and update order/status history; buyer cancel/return notifications are inserted; notification deletion is persisted; order and notification lists load from Supabase; wishlist pricing/product data is fetched from backend joins instead of relying only on loaded catalog products.
+
+**Remaining differences / platform limits:** Android refreshes orders and notifications by polling (5s/15s) rather than the web's realtime subscription. Seller/admin notifications, push/email side effects are not reproduced by the buyer-side Android actions. The native invoice uses Android's document-create picker instead of the web's browser download and currently lacks the web invoice's full seller/KYC/product metadata. The web's Shippo/international tracking fallback is excluded for the India-only app; Android opens Shiprocket tracking when an AWB is available. Wishlist stock cannot represent the web's unknown-stock state with the current boolean model.
+
+
+## Catalog/Info pages parity audit
+
+**Status: implemented in code; not compiled or device-tested because Android SDK/kotlinc are unavailable.** Compared the web catalog/info pages and search experience with the Compose screens.
+
+- **Category/section listings:** added category-subtree product loading, category grouping, product counts, price/category/rating/stock filters, web sort choices, filter reset/empty states, section metadata, and invalid-section 404 handling. Section pages now expose search navigation.
+- **Categories/search:** aligned home category shortcuts to the web's first 16 active categories and image-name mapping, with category-ID navigation. Search now uses `search_products_catalog` for live suggestions and 50-item result pages/counts, and supports recent guest/account history, product-click metadata, individual deletion, clear-all, and load-more.
+- **Contact/info pages:** matched the contact copy/details, required name/email/message validation, valid email check, and WhatsApp submission. Added a shared web-style policy/about renderer, exposed About from Profile actions, and wired legal-page Home navigation. Added native 404 and offline fallback handling.
+- **Intentional omissions:** Android has no footer, welcome bar, video ads, or “automatic device-location lookup,” per requirement. Web `/all-categories` redirects to Home, so it has no separate Android destination; home shortcuts remain the matching category view.
+
+**Platform/source limits:** offline handling uses Android connectivity callbacks because the web component uses browser online/offline events. About copy describes global operations and Stripe, which do not match the India/Razorpay app; source copy was retained rather than inventing replacement company/payment facts. WhatsApp/email/phone links open external Android handlers.

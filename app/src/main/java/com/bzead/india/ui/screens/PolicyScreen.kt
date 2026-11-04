@@ -9,23 +9,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Email
-import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Phone
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -37,101 +29,95 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bzead.india.data.PolicyContent
-import com.bzead.india.theme.BzeadPrimary
-import com.bzead.india.theme.TextPrimary
-import com.bzead.india.theme.TextSecondary
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PolicyScreen(
     policyType: String,
     onNavigateBack: () -> Unit,
+    onNavigateHome: () -> Unit = onNavigateBack,
     modifier: Modifier = Modifier
 ) {
     val blocks = remember(policyType) { PolicyContent.blocks(policyType) }
     val title = blocks.firstOrNull { it.kind == "h1" }?.text ?: "Terms & Conditions"
+    val isAbout = policyType == "about"
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(Color(0xFFF8FAFC))
-    ) {
+    Column(modifier = modifier.fillMaxSize().background(Color.White)) {
         TopAppBar(
-            title = {
-                Text(
-                    text = title,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp
-                )
-            },
+            title = { Text(title, fontWeight = FontWeight.SemiBold, fontSize = 18.sp) },
             navigationIcon = {
                 IconButton(onClick = onNavigateBack) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
-                        tint = Color.White
-                    )
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = BzeadPrimary,
-                titleContentColor = Color.White
+                containerColor = Color.White,
+                titleContentColor = Color(0xFF111827),
+                navigationIconContentColor = Color(0xFF475569)
             )
         )
 
+        Row(
+            modifier = Modifier.fillMaxWidth().background(Color(0xFFF9FAFB)).padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            TextButton(onClick = onNavigateBack) { Text("Back", color = Color(0xFF475569), fontSize = 13.sp) }
+            if (!isAbout) {
+                Text("•", color = Color(0xFF9CA3AF), fontSize = 13.sp)
+                TextButton(onClick = onNavigateHome) { Text("Home", color = Color(0xFF475569), fontSize = 13.sp) }
+            }
+            Text("›", color = Color(0xFF9CA3AF), fontSize = 13.sp)
+            Text(title, color = Color(0xFF111827), fontSize = 13.sp, maxLines = 1)
+        }
+
         Column(
-            modifier = Modifier
-                .weight(1f)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             blocks.forEach { block ->
                 when (block.kind) {
-                    "h1" -> Text(block.text, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                    "h2", "h3", "h4" -> Text(block.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = BzeadPrimary)
-                    "li" -> Text("•  ${block.text}", style = MaterialTheme.typography.bodyMedium, color = TextSecondary, lineHeight = 22.sp)
-                    else -> Text(block.text, style = MaterialTheme.typography.bodyMedium, color = TextSecondary, lineHeight = 22.sp)
+                    "h1" -> Unit
+                    "h2" -> Text(
+                        block.text,
+                        modifier = Modifier.padding(top = 12.dp),
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF111827),
+                        lineHeight = 22.sp
+                    )
+                    "h3" -> Text(
+                        block.text,
+                        modifier = Modifier.padding(top = 6.dp),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFF111827),
+                        lineHeight = 20.sp
+                    )
+                    "h4" -> Text(
+                        block.text,
+                        modifier = Modifier.padding(top = 4.dp),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFF374151),
+                        lineHeight = 20.sp
+                    )
+                    "li" -> Text(
+                        "•  ${block.text}",
+                        modifier = Modifier.padding(start = 4.dp),
+                        fontSize = 14.sp,
+                        color = Color(0xFF4B5563),
+                        lineHeight = 21.sp
+                    )
+                    else -> Text(
+                        block.text,
+                        fontSize = if (block.text.startsWith("Last updated:") || block.text.startsWith("Updated date:")) 12.sp else 14.sp,
+                        color = if (block.text.startsWith("Last updated:") || block.text.startsWith("Updated date:")) Color(0xFF6B7280) else Color(0xFF374151),
+                        lineHeight = 21.sp
+                    )
                 }
             }
-        }
-    }
-}
-
-@Composable
-fun PolicySectionCard(title: String, body: String) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        shape = RoundedCornerShape(12.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = BzeadPrimary
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = body,
-                style = MaterialTheme.typography.bodyMedium,
-                color = TextSecondary,
-                lineHeight = 22.sp
-            )
-        }
-    }
-}
-
-@Composable
-fun ContactRow(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, value: String) {
-    Row(verticalAlignment = Alignment.Top) {
-        Icon(imageVector = icon, contentDescription = null, tint = BzeadPrimary, modifier = Modifier.size(20.dp))
-        Spacer(modifier = Modifier.width(10.dp))
-        Column {
-            Text(text = title, fontSize = 11.sp, color = TextSecondary)
-            Text(text = value, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+            Spacer(Modifier.height(8.dp))
         }
     }
 }

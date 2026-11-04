@@ -9,7 +9,8 @@ data class NotificationItem(
     val message: String,
     val timestamp: String,
     val isRead: Boolean = false,
-    val orderId: String? = null
+    val orderId: String? = null,
+    val extra: String? = null
 )
 
 data class ProductVariant(
@@ -99,11 +100,42 @@ enum class OrderStatus(val display: String) {
     }
 }
 
+data class OrderTrackingEvent(
+    val id: String,
+    val status: String,
+    val statusCode: String,
+    val location: String,
+    val eventAt: String,
+    val remarks: String
+)
+
+data class OrderReturnRecord(
+    val id: String,
+    val status: String,
+    val reason: String,
+    val description: String,
+    val createdAt: String
+)
+
+data class OrderStatusHistoryRecord(
+    val id: String,
+    val fromStatus: String,
+    val toStatus: String,
+    val note: String,
+    val createdAt: String
+)
+
 data class OrderItem(
     val product: Product,
     val quantity: Int,
     val unitPrice: Double = product.price,
-    val totalPrice: Double = unitPrice * quantity
+    val totalPrice: Double = unitPrice * quantity,
+    val id: String = "",
+    val sellerId: String? = null,
+    val selectedSize: String? = null,
+    val selectedColor: String? = null,
+    val variantSku: String? = null,
+    val hsnCode: String? = null
 )
 
 data class Order(
@@ -122,7 +154,8 @@ data class Order(
     val trackingNumber: String = "",
     val estimatedDeliveryDate: String = "",
     val paymentMethod: String = "",
-    val paymentStatus: String = ""
+    val paymentStatus: String = "",
+    val paymentIntentId: String = ""
 )
 
 data class LoginResult(

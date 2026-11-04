@@ -1,6 +1,7 @@
 package com.bzead.india.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -35,6 +36,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -64,6 +66,7 @@ fun LoginScreen(
     onNavigateToSignup: () -> Unit,
     onNavigateToForgotPassword: () -> Unit,
     onLoginSuccess: () -> Unit,
+    initialSuccessMessage: String? = null,
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
@@ -76,6 +79,10 @@ fun LoginScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var successMessage by remember { mutableStateOf<String?>(null) }
     var wrongRolePopup by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(initialSuccessMessage) {
+        if (!initialSuccessMessage.isNullOrBlank()) successMessage = initialSuccessMessage
+    }
 
     fun handleLogin() {
         error = null
@@ -109,7 +116,7 @@ fun LoginScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFFF8FAFC))
+            .background(Color.White)
     ) {
         BuyerAuthNav(onNavigateBack = onNavigateBack)
 
@@ -117,17 +124,21 @@ fun LoginScreen(
             modifier = Modifier
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 20.dp),
+                .padding(horizontal = 16.dp, vertical = 0.dp)
+                .padding(bottom = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
+            BuyerAuthPageTitle("Log in")
+            Spacer(modifier = Modifier.height(24.dp))
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .testTag("login_card"),
-                shape = RoundedCornerShape(12.dp),
+                    .testTag("login_card")
+                    .border(1.dp, Color(0xFFEDF0F4), RoundedCornerShape(8.dp)),
+                shape = RoundedCornerShape(8.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
             ) {
                 Column(
                     modifier = Modifier.padding(20.dp)
@@ -160,7 +171,7 @@ fun LoginScreen(
                         subtitle = "Sign in to continue shopping on Bzead."
                     )
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(20.dp))
 
                     if (successMessage != null) {
                         AuthSuccessAlert(message = successMessage!!)

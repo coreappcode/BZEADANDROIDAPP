@@ -1,5 +1,6 @@
 package com.bzead.india.ui.screens
 
+import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -16,32 +17,23 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.LocalShipping
-import androidx.compose.material.icons.filled.RemoveShoppingCart
-import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -54,9 +46,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -66,13 +60,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.bzead.india.data.BzeadRepository
+import com.bzead.india.data.CartPriceResult
 import com.bzead.india.model.CartItem
 import com.bzead.india.theme.BzeadHeaderNavy
-import com.bzead.india.theme.BzeadPrimary
 import com.bzead.india.theme.BzeadSuccess
-import com.bzead.india.theme.TextPrimary
-import com.bzead.india.theme.TextSecondary
-import com.bzead.india.ui.components.QuantityStepper
+import com.bzead.india.ui.components.formatPrice
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+
+private fun hasVariantSelection(item: CartItem): Boolean =
+    !item.selectedVariantId.isNullOrEmpty() || !item.selectedVariantSku.isNullOrEmpty() ||
+        !item.selectedSize.isNullOrEmpty() || !item.selectedColor.isNullOrEmpty()
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -82,54 +80,116 @@ fun CartScreen(
     onProceedToCheckout: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val cartItems by BzeadRepository.cartItems.collectAsState()
     val isCartLoading by BzeadRepository.isCartLoading.collectAsState()
     val isLoggedIn by BzeadRepository.isLoggedIn.collectAsState()
+    val wishlistIds by BzeadRepository.wishlistProductIds.collectAsState()
 
     var selectedItemIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var confirmRemoveCartItemId by remember { mutableStateOf<String?>(null) }
+    var updatingId by remember { mutableStateOf<String?>(null) }
+    var prices by remember { mutableStateOf<CartPriceResult?>(null) }
+    var pricesLoading by remember { mutableStateOf(false) }
+    var variantPriceError by remember { mutableStateOf<String?>(null) }
 
-    // Sync selected items whenever cartItems list updates
     LaunchedEffect(isLoggedIn) {
         if (isLoggedIn) {
             BzeadRepository.syncCartWithBackend()
         }
     }
 
-    LaunchedEffect(cartItems) {
-        val currentIds = cartItems.map { it.id }.toSet()
-        if (selectedItemIds.isEmpty() || !currentIds.containsAll(selectedItemIds)) {
-            selectedItemIds = currentIds
+    LaunchedEffect(updatingId) {
+        if (updatingId != null) {
+            delay(300)
+            updatingId = null
         }
     }
 
-    val isAllSelected = cartItems.isNotEmpty() && selectedItemIds.size == cartItems.size
+    // Web: keep still-available selections; when none remain, select everything.
+    LaunchedEffect(cartItems) {
+        val available = cartItems.map { it.id }.toSet()
+        val still = selectedItemIds.filter { it in available }.toSet()
+        selectedItemIds = if (still.isEmpty() && cartItems.isNotEmpty()) available else still
+    }
+
+    // Web Cart.tsx: fetchVerifiedVariantPrices (per item) + fetchPublicProductPrices.
+    LaunchedEffect(cartItems) {
+        if (cartItems.isEmpty()) {
+            prices = null
+            variantPriceError = null
+            pricesLoading = false
+            return@LaunchedEffect
+        }
+        pricesLoading = true
+        try {
+            val result = BzeadRepository.loadCartPrices(cartItems)
+            prices = result
+            variantPriceError = result.error
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            variantPriceError = e.message ?: "Unable to verify cart pricing."
+            prices = null
+        }
+        pricesLoading = false
+    }
+
+    val unavailableItems: Map<String, String> = if (variantPriceError != null) emptyMap() else prices?.unavailable.orEmpty()
+    val variantPriceMap: Map<String, Double> = if (variantPriceError != null) emptyMap() else prices?.variantPrices.orEmpty()
+    val publicPriceMap: Map<String, Double> = prices?.publicPrices.orEmpty()
+
     val selectedCartItems = cartItems.filter { it.id in selectedItemIds }
-    val payableSelectedItems = selectedCartItems.filter { it.product.inStock && it.product.stockCount > 0 }
-    val displaySubtotal = payableSelectedItems.sumOf { it.totalPrice }
+    val payableSelectedItems = selectedCartItems.filter { unavailableItems[it.id] == null }
+    val unavailableCount = unavailableItems.size
+
+    fun unitPriceFor(item: CartItem): Double? =
+        if (hasVariantSelection(item)) variantPriceMap[item.id] else publicPriceMap[item.product.id] ?: item.product.price
+
+    val hasResolvedSelectedPrices = payableSelectedItems.all { unitPriceFor(it) != null } && variantPriceError == null
+    val displaySubtotal = payableSelectedItems.sumOf { item -> (unitPriceFor(item) ?: 0.0) * item.quantity }
+    val isAllSelected = cartItems.isNotEmpty() && selectedItemIds.size == cartItems.size
+
+    fun handleCheckout() {
+        if (selectedCartItems.isEmpty()) {
+            Toast.makeText(context, "PLEASE SELECT ANY ITEM TO PROCEED", Toast.LENGTH_LONG).show()
+            return
+        }
+        if (payableSelectedItems.isEmpty()) {
+            Toast.makeText(context, "The selected items are no longer available. Please remove them or select an available variant.", Toast.LENGTH_LONG).show()
+            return
+        }
+        if (!hasResolvedSelectedPrices) {
+            Toast.makeText(context, "Please wait for final prices to load.", Toast.LENGTH_LONG).show()
+            return
+        }
+        val outOfStock = payableSelectedItems.filter { it.product.stockCount <= 0 }
+        if (outOfStock.isNotEmpty()) {
+            Toast.makeText(
+                context,
+                "These items are out of stock: ${outOfStock.joinToString(", ") { it.product.title }}. Please remove them to continue.",
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+        BzeadRepository.setCheckoutSelection(payableSelectedItems.map { it.id }.toSet())
+        onProceedToCheckout()
+    }
 
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFFF8FAFC))
+            .background(Color.White)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // Header bar matching Web App Header & Cart Page
             TopAppBar(
                 title = {
-                    Column {
-                        Text(
-                            text = "Shopping Cart",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp,
-                            color = Color.White
-                        )
-                        Text(
-                            text = "${cartItems.size} item${if (cartItems.size != 1) "s" else ""} in your cart",
-                            fontSize = 11.sp,
-                            color = Color(0xFFCBD5E1)
-                        )
-                    }
+                    Text(
+                        text = "Shopping Cart",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        color = Color.White
+                    )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = BzeadHeaderNavy,
@@ -139,268 +199,229 @@ fun CartScreen(
 
             if (isCartLoading && cartItems.isEmpty()) {
                 Box(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(vertical = 8.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator(color = BzeadPrimary)
-                        Spacer(modifier = Modifier.height(12.dp))
+                    CircularProgressIndicator(color = Color(0xFFFF9900))
+                }
+            } else if (cartItems.isEmpty()) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, Color(0xFFDDDDDD), RoundedCornerShape(10.dp))
+                        .background(Color.White, RoundedCornerShape(10.dp))
+                        .padding(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ShoppingCart,
+                        contentDescription = "Empty Cart",
+                        tint = Color(0xFF888888),
+                        modifier = Modifier.size(56.dp)
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "Your Cart is Empty",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF0F1111)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Add items to your cart to get started with shopping.",
+                        fontSize = 14.sp,
+                        color = Color(0xFF555555),
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Button(
+                        onClick = onNavigateToHome,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFD814)),
+                        shape = RoundedCornerShape(10.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFCD200)),
+                        modifier = Modifier.testTag("empty_cart_continue_btn")
+                    ) {
                         Text(
-                            text = "Loading your cart...",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = TextSecondary
+                            text = "Continue Shopping",
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF0F1111),
+                            fontSize = 15.sp
                         )
                     }
                 }
-            } else if (cartItems.isEmpty()) {
-                // Empty Cart view matching web CartPage.tsx
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(20.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.White),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(28.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.RemoveShoppingCart,
-                                contentDescription = "Empty Cart",
-                                tint = Color(0xFF94A3B8),
-                                modifier = Modifier.size(60.dp)
-                            )
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                text = "Your Cart is Empty",
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF0F1111)
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = "Add items to your cart to get started with shopping.",
-                                fontSize = 13.sp,
-                                color = Color(0xFF555555),
-                                textAlign = TextAlign.Center
-                            )
-                            Spacer(modifier = Modifier.height(24.dp))
-                            Button(
-                                onClick = onNavigateToHome,
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFD814)),
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier
-                                    .height(44.dp)
-                                    .testTag("empty_cart_continue_btn")
-                            ) {
-                                Text(
-                                    text = "Continue Shopping",
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF0F1111),
-                                    fontSize = 14.sp
-                                )
-                            }
-                        }
-                    }
-                }
             } else {
+                // Select All row (mobile: checkbox only)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.White)
+                        .padding(horizontal = 12.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = isAllSelected,
+                        onCheckedChange = {
+                            selectedItemIds = if (isAllSelected) emptySet() else cartItems.map { item -> item.id }.toSet()
+                        },
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = Color(0xFFFF9900),
+                            uncheckedColor = Color(0xFF94A3B8)
+                        )
+                    )
+                }
+
                 LazyColumn(
                     modifier = Modifier
                         .weight(1f)
-                        .fillMaxWidth(),
-                    contentPadding = PaddingValues(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                        .fillMaxWidth()
+                        .background(Color.White),
+                    contentPadding = PaddingValues(horizontal = 8.dp)
                 ) {
-                    // Select All Row (matching Web App CartPage.tsx)
-                    item {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-                            shape = RoundedCornerShape(10.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.clickable {
-                                        selectedItemIds = if (isAllSelected) emptySet() else cartItems.map { it.id }.toSet()
-                                    }
-                                ) {
-                                    Checkbox(
-                                        checked = isAllSelected,
-                                        onCheckedChange = { checked ->
-                                            selectedItemIds = if (checked) cartItems.map { it.id }.toSet() else emptySet()
-                                        },
-                                        colors = CheckboxDefaults.colors(
-                                            checkedColor = Color(0xFFFF9900),
-                                            uncheckedColor = Color(0xFF94A3B8)
-                                        )
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = "Select All Items",
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = Color(0xFF555555)
-                                    )
-                                }
-
-                                Text(
-                                    text = if (isAllSelected) "Deselect all" else "${selectedItemIds.size} selected",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF007185),
-                                    modifier = Modifier
-                                        .clickable {
-                                            selectedItemIds = if (isAllSelected) emptySet() else cartItems.map { it.id }.toSet()
-                                        }
-                                        .padding(6.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    // Cart Items connected to real backend & state
                     items(cartItems, key = { it.id }) { item ->
                         val isSelected = selectedItemIds.contains(item.id)
                         CartItemRow(
                             cartItem = item,
                             isSelected = isSelected,
+                            isUpdating = updatingId == item.id,
+                            unitPrice = unitPriceFor(item),
+                            unavailableReason = unavailableItems[item.id],
                             onToggleSelect = {
-                                selectedItemIds = if (isSelected) {
-                                    selectedItemIds - item.id
-                                } else {
-                                    selectedItemIds + item.id
-                                }
+                                selectedItemIds = if (isSelected) selectedItemIds - item.id else selectedItemIds + item.id
                             },
                             onProductClick = { onNavigateToProduct(item.product.id) },
                             onIncrement = {
-                                val currentQty = item.quantity
-                                if (currentQty < item.product.stockCount) {
-                                    BzeadRepository.updateCartQuantity(item.id, currentQty + 1)
+                                if (item.quantity + 1 <= item.product.stockCount) {
+                                    updatingId = item.id
+                                    BzeadRepository.updateCartQuantity(item.id, item.quantity + 1)
                                 }
                             },
                             onDecrement = {
-                                val currentQty = item.quantity
-                                if (currentQty <= 1) {
+                                if (item.quantity - 1 < 1) {
                                     confirmRemoveCartItemId = item.id
                                 } else {
-                                    BzeadRepository.updateCartQuantity(item.id, currentQty - 1)
+                                    updatingId = item.id
+                                    BzeadRepository.updateCartQuantity(item.id, item.quantity - 1)
                                 }
                             },
                             onRemove = { confirmRemoveCartItemId = item.id },
                             onMoveToWishlist = {
-                                BzeadRepository.toggleWishlist(item.product.id)
+                                if (item.product.id !in wishlistIds) BzeadRepository.toggleWishlist(item.product.id)
                                 BzeadRepository.removeFromCart(item.id)
                             }
                         )
                     }
+                }
 
-                    // Cart Summary Card matching Web App CartPage.tsx
-                    item {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-                            shape = RoundedCornerShape(10.dp)
+                // Sticky cart summary (web native: top border e5e7eb, padding 8/16/10)
+                Divider(color = Color(0xFFE5E7EB))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.White)
+                        .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 10.dp)
+                ) {
+                    if (pricesLoading && selectedCartItems.isNotEmpty()) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(1.dp, Color(0xFFDDDDDD), RoundedCornerShape(10.dp))
+                                .padding(24.dp)
                         ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                CircularProgressIndicator(
+                                    color = Color(0xFFFF9900),
+                                    strokeWidth = 2.dp,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
                                 Text(
-                                    text = "Cart Summary",
-                                    fontSize = 17.sp,
-                                    fontWeight = FontWeight.Bold,
+                                    text = "Updating prices…",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.SemiBold,
                                     color = Color(0xFF0F1111)
                                 )
-                                Spacer(modifier = Modifier.height(12.dp))
-
-                                PriceSummaryRow(
-                                    label = "Subtotal (${payableSelectedItems.size} item${if (payableSelectedItems.size != 1) "s" else ""})",
-                                    value = if (payableSelectedItems.isNotEmpty()) "₹${displaySubtotal.toInt()}" else "—"
+                            }
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(text = "Please wait a moment", fontSize = 13.sp, color = Color(0xFF888888))
+                        }
+                    } else {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(1.dp, Color(0xFFDDDDDD), RoundedCornerShape(10.dp))
+                                .padding(16.dp)
+                        ) {
+                            if (variantPriceError == null && unavailableCount > 0) {
+                                CartAlertBanner(
+                                    "$unavailableCount item${if (unavailableCount != 1) "s are" else " is"} no longer available and will not be included in checkout."
                                 )
+                            }
+                            if (variantPriceError != null) {
+                                CartAlertBanner(variantPriceError.orEmpty())
+                            }
 
-                                PriceSummaryRow(
-                                    label = "Delivery Fee",
-                                    value = "Calculated at checkout"
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "Subtotal (${payableSelectedItems.size} item${if (payableSelectedItems.size != 1) "s" else ""})",
+                                    fontSize = 14.sp,
+                                    color = Color(0xFF555555)
                                 )
-
-                                Divider(modifier = Modifier.padding(vertical = 12.dp), color = Color(0xFFDDD000).copy(alpha = 0.2f))
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "Estimated Total",
-                                        fontSize = 16.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF0F1111)
-                                    )
-                                    Text(
-                                        text = if (payableSelectedItems.isNotEmpty()) "₹${displaySubtotal.toInt()}" else "—",
-                                        fontSize = 18.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFFB12704)
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.height(16.dp))
-
-                                Button(
-                                    onClick = {
-                                        BzeadRepository.setCheckoutSelection(payableSelectedItems.map { it.id }.toSet())
-                                        onProceedToCheckout()
-                                    },
-                                    enabled = payableSelectedItems.isNotEmpty(),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = Color(0xFFFFD814),
-                                        disabledContainerColor = Color(0xFFE2E8F0)
-                                    ),
-                                    shape = RoundedCornerShape(10.dp),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(48.dp)
-                                        .testTag("proceed_checkout_btn")
-                                ) {
-                                    Text(
-                                        text = "Proceed to Checkout →",
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (payableSelectedItems.isNotEmpty()) Color(0xFF0F1111) else Color(0xFF94A3B8),
-                                        fontSize = 15.sp
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.height(10.dp))
-
-                                OutlinedButton(
-                                    onClick = onNavigateToHome,
-                                    shape = RoundedCornerShape(10.dp),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(40.dp)
-                                ) {
-                                    Text(
-                                        text = "Continue Shopping",
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = Color(0xFF007185)
-                                    )
-                                }
+                                Text(
+                                    text = if (payableSelectedItems.isNotEmpty()) formatPrice(displaySubtotal) else "—",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFF0F1111)
+                                )
+                            }
+                            Divider(
+                                modifier = Modifier.padding(vertical = 14.dp),
+                                thickness = 2.dp,
+                                color = Color(0xFFDDDDDD)
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "Estimated Total",
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFB12704)
+                                )
+                                Text(
+                                    text = if (payableSelectedItems.isNotEmpty()) formatPrice(displaySubtotal) else "—",
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFB12704)
+                                )
+                            }
+                            Button(
+                                onClick = { handleCheckout() },
+                                enabled = hasResolvedSelectedPrices && payableSelectedItems.isNotEmpty(),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFFFFD814),
+                                    disabledContainerColor = Color(0xFFFFD814).copy(alpha = 0.5f)
+                                ),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFCD200)),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier
+                                    .padding(top = 16.dp)
+                                    .fillMaxWidth()
+                                    .height(52.dp)
+                                    .testTag("proceed_checkout_btn")
+                            ) {
+                                Text(
+                                    text = "Proceed to Checkout →",
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF0F1111),
+                                    fontSize = 15.sp
+                                )
                             }
                         }
                     }
@@ -408,9 +429,7 @@ fun CartScreen(
             }
         }
 
-        // Confirm Remove Dialog (matching Web App CartPage.tsx modal)
         if (confirmRemoveCartItemId != null) {
-            val itemToRemove = cartItems.find { it.id == confirmRemoveCartItemId }
             AlertDialog(
                 onDismissRequest = { confirmRemoveCartItemId = null },
                 title = {
@@ -423,7 +442,7 @@ fun CartScreen(
                 },
                 text = {
                     Text(
-                        text = "Are you sure you want to remove \"${itemToRemove?.product?.title ?: "this item"}\" from your cart?",
+                        text = "Are you sure you want to remove this item from your cart?",
                         fontSize = 14.sp,
                         color = Color(0xFF555555)
                     )
@@ -431,13 +450,16 @@ fun CartScreen(
                 confirmButton = {
                     Button(
                         onClick = {
-                            confirmRemoveCartItemId?.let { BzeadRepository.removeFromCart(it) }
+                            confirmRemoveCartItemId?.let {
+                                updatingId = it
+                                BzeadRepository.removeFromCart(it)
+                            }
                             confirmRemoveCartItemId = null
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB12704)),
                         shape = RoundedCornerShape(10.dp)
                     ) {
-                        Text("Remove", fontWeight = FontWeight.Bold, color = Color.White)
+                        Text("Remove", fontWeight = FontWeight.SemiBold, color = Color.White, fontSize = 14.sp)
                     }
                 },
                 dismissButton = {
@@ -445,7 +467,7 @@ fun CartScreen(
                         onClick = { confirmRemoveCartItemId = null },
                         shape = RoundedCornerShape(10.dp)
                     ) {
-                        Text("Cancel", fontWeight = FontWeight.SemiBold, color = Color(0xFF0F1111))
+                        Text("Cancel", fontWeight = FontWeight.SemiBold, color = Color(0xFF0F1111), fontSize = 14.sp)
                     }
                 },
                 containerColor = Color.White,
@@ -455,11 +477,29 @@ fun CartScreen(
     }
 }
 
+@Composable
+private fun CartAlertBanner(message: String) {
+    Text(
+        text = message,
+        fontSize = 14.sp,
+        fontWeight = FontWeight.SemiBold,
+        color = Color(0xFFB91C1C),
+        modifier = Modifier
+            .padding(bottom = 12.dp)
+            .fillMaxWidth()
+            .background(Color(0xFFFEF2F2), RoundedCornerShape(8.dp))
+            .border(1.dp, Color(0xFFFCA5A5), RoundedCornerShape(8.dp))
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+    )
+}
 
 @Composable
 fun CartItemRow(
     cartItem: CartItem,
     isSelected: Boolean,
+    isUpdating: Boolean,
+    unitPrice: Double?,
+    unavailableReason: String?,
     onToggleSelect: () -> Unit,
     onProductClick: () -> Unit,
     onIncrement: () -> Unit,
@@ -467,187 +507,211 @@ fun CartItemRow(
     onRemove: () -> Unit,
     onMoveToWishlist: () -> Unit
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        shape = RoundedCornerShape(10.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .alpha(if (isUpdating) 0.5f else 1f)
+            .border(1.dp, Color(0xFFDDDDDD))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.Top
     ) {
-        Column(
+        Checkbox(
+            checked = isSelected,
+            onCheckedChange = { onToggleSelect() },
+            colors = CheckboxDefaults.colors(
+                checkedColor = Color(0xFFFF9900),
+                uncheckedColor = Color(0xFF94A3B8)
+            ),
+            modifier = Modifier.size(24.dp)
+        )
+
+        Spacer(modifier = Modifier.width(10.dp))
+
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp)
+                .size(62.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color(0xFFF9F9F9))
+                .border(1.dp, Color(0xFFEEEEEE), RoundedCornerShape(8.dp))
+                .clickable { onProductClick() }
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.Top
-            ) {
-                // Checkbox matching Web App CartPage.tsx
-                Checkbox(
-                    checked = isSelected,
-                    onCheckedChange = { onToggleSelect() },
-                    colors = CheckboxDefaults.colors(
-                        checkedColor = Color(0xFFFF9900),
-                        uncheckedColor = Color(0xFF94A3B8)
-                    ),
-                    modifier = Modifier.padding(top = 2.dp)
+            if (!cartItem.product.imageUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = cartItem.product.imageUrl,
+                    contentDescription = cartItem.product.title,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
                 )
-
-                Spacer(modifier = Modifier.width(4.dp))
-
-                // Product Image
-                Box(
-                    modifier = Modifier
-                        .size(80.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFFF9F9F9))
-                        .border(0.5.dp, Color(0xFFEEEEEE), RoundedCornerShape(8.dp))
-                        .clickable { onProductClick() }
-                ) {
-                    if (!cartItem.product.imageUrl.isNullOrBlank()) {
-                        AsyncImage(
-                            model = cartItem.product.imageUrl,
-                            contentDescription = cartItem.product.title,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
-                    } else if (cartItem.product.drawableRes != null) {
-                        Image(
-                            painter = painterResource(id = cartItem.product.drawableRes),
-                            contentDescription = cartItem.product.title,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(10.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    // Title & Price Row
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.Top
-                    ) {
-                        Text(
-                            text = cartItem.product.title,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFF0F1111),
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable { onProductClick() }
-                        )
-
-                        Spacer(modifier = Modifier.width(8.dp))
-
-                        Text(
-                            text = "₹${(cartItem.unitPrice * cartItem.quantity).toInt()}",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFFB12704)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(2.dp))
-
-                    // Brand / Seller
-                    Text(
-                        text = "Sold by: ${cartItem.product.brand.ifBlank { "BZEAD Seller" }}",
-                        fontSize = 11.sp,
-                        color = Color(0xFF888888)
-                    )
-
-                    // Size / Color / Variant Details
-                    val variantDetails = listOfNotNull(
-                        cartItem.selectedSize?.let { "Size: $it" },
-                        cartItem.selectedColor?.let { "Color: $it" }
-                    ).joinToString(" · ")
-
-                    if (variantDetails.isNotBlank()) {
-                        Text(
-                            text = variantDetails,
-                            fontSize = 11.sp,
-                            color = Color(0xFF888888)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    // Stock Status Badge
-                    if (cartItem.product.inStock && cartItem.product.stockCount > 0) {
-                        Text(
-                            text = "In Stock",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF047857),
-                            modifier = Modifier
-                                .background(Color(0xFFD1FAE5), RoundedCornerShape(4.dp))
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    } else {
-                        Text(
-                            text = "Out of Stock",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFFB91C1C),
-                            modifier = Modifier
-                                .background(Color(0xFFFEE2E2), RoundedCornerShape(4.dp))
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Quantity Stepper + Actions Row
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        QuantityStepper(
-                            quantity = cartItem.quantity,
-                            onIncrement = onIncrement,
-                            onDecrement = onDecrement
-                        )
-
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "Move to Wishlist",
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF007185),
-                                modifier = Modifier
-                                    .clickable { onMoveToWishlist() }
-                                    .padding(vertical = 4.dp, horizontal = 4.dp)
-                            )
-
-                            Text(
-                                text = "|",
-                                fontSize = 11.sp,
-                                color = Color(0xFFDDD000),
-                                modifier = Modifier.padding(horizontal = 4.dp)
-                            )
-
-                            IconButton(
-                                onClick = onRemove,
-                                modifier = Modifier.size(28.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.DeleteOutline,
-                                    contentDescription = "Delete Item",
-                                    tint = Color(0xFF0F1111),
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
-                    }
-                }
+            } else if (cartItem.product.drawableRes != null) {
+                Image(
+                    painter = painterResource(id = cartItem.product.drawableRes),
+                    contentDescription = cartItem.product.title,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
             }
         }
+
+        Spacer(modifier = Modifier.width(10.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = cartItem.product.title,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFF0F1111),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .padding(bottom = 2.dp)
+                    .clickable { onProductClick() }
+            )
+
+            Text(
+                text = "Sold by: ${cartItem.product.brand.ifBlank { "BZEAD Seller" }}",
+                fontSize = 11.sp,
+                color = Color(0xFF888888),
+                modifier = Modifier.padding(bottom = 2.dp)
+            )
+
+            val variantDetails = buildString {
+                if (!cartItem.selectedSize.isNullOrEmpty()) append("Size: ${cartItem.selectedSize}")
+                if (!cartItem.selectedSize.isNullOrEmpty() && !cartItem.selectedColor.isNullOrEmpty()) append(" · ")
+                if (!cartItem.selectedColor.isNullOrEmpty()) append("Color: ${cartItem.selectedColor}")
+            }
+            if (variantDetails.isNotEmpty()) {
+                Text(
+                    text = variantDetails,
+                    fontSize = 11.sp,
+                    color = Color(0xFF888888),
+                    modifier = Modifier.padding(bottom = 2.dp)
+                )
+            }
+
+            if (unavailableReason != null) {
+                Text(
+                    text = "This option is no longer available. Delete it, or open the product and add it again.",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFFB91C1C),
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+            }
+
+            if (cartItem.product.stockCount > 0) {
+                Text(
+                    text = "In Stock",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF047857),
+                    modifier = Modifier
+                        .background(Color(0xFFD1FAE5), RoundedCornerShape(4.dp))
+                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                )
+            } else {
+                Text(
+                    text = "Out of Stock",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFFB91C1C),
+                    modifier = Modifier
+                        .background(Color(0xFFFEE2E2), RoundedCornerShape(4.dp))
+                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .border(1.dp, Color(0xFFDDDDDD), RoundedCornerShape(8.dp)),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .background(Color(0xFFF0F0F0))
+                            .clickable(enabled = !isUpdating) { onDecrement() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("−", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F1111))
+                    }
+                    Box(modifier = Modifier.width(1.dp).height(32.dp).background(Color(0xFFDDDDDD)))
+                    Box(
+                        modifier = Modifier
+                            .width(40.dp)
+                            .height(32.dp)
+                            .background(Color.White),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "${cartItem.quantity}",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFF0F1111)
+                        )
+                    }
+                    Box(modifier = Modifier.width(1.dp).height(32.dp).background(Color(0xFFDDDDDD)))
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .background(Color(0xFFF0F0F0))
+                            .clickable(enabled = !isUpdating) { onIncrement() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("+", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F1111))
+                    }
+                }
+
+                if (isUpdating) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    CircularProgressIndicator(
+                        color = Color(0xFFFF9900),
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Text(
+                    text = "Move to Wishlist",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF007185),
+                    modifier = Modifier.clickable(enabled = !isUpdating) { onMoveToWishlist() }
+                )
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Icon(
+                    imageVector = Icons.Default.DeleteOutline,
+                    contentDescription = "Remove ${cartItem.product.title} from cart",
+                    tint = Color(0xFF0F1111),
+                    modifier = Modifier
+                        .clickable(enabled = !isUpdating) { onRemove() }
+                        .padding(4.dp)
+                        .size(16.dp)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.width(10.dp))
+
+        Text(
+            text = when {
+                unavailableReason != null -> "Unavailable"
+                unitPrice != null -> formatPrice(unitPrice)
+                else -> "Loading…"
+            },
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFFB12704),
+            textAlign = TextAlign.End,
+            modifier = Modifier.widthIn(min = 60.dp)
+        )
     }
 }
 

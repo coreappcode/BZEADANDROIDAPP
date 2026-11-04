@@ -20,6 +20,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -40,6 +41,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
@@ -61,6 +63,7 @@ fun OTPVerificationScreen(
     purpose: String = "signup",
     onNavigateBack: () -> Unit,
     onVerificationSuccess: () -> Unit,
+    onNavigateHome: () -> Unit = onNavigateBack,
     onResetCodeEntered: (code: String) -> Unit = {},
     onAlreadyConfirmed: () -> Unit = onNavigateBack,
     modifier: Modifier = Modifier
@@ -70,11 +73,24 @@ fun OTPVerificationScreen(
 
     var otpCode by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
+    var success by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    var noticeMessage by remember { mutableStateOf<String?>("OTP sent successfully. Please check your inbox and spam folder.") }
+    var noticeMessage by remember(purpose) {
+        mutableStateOf(
+            if (purpose == "password-reset") "Reset OTP sent. Please check inbox, spam, and promotions tabs."
+            else "OTP sent successfully. Please check your inbox and spam folder."
+        )
+    }
     var resendTimer by remember { mutableIntStateOf(30) }
     var canResend by remember { mutableStateOf(false) }
     var resending by remember { mutableStateOf(false) }
+
+    LaunchedEffect(noticeMessage) {
+        if (noticeMessage != null) {
+            delay(3500)
+            noticeMessage = null
+        }
+    }
 
     LaunchedEffect(resendTimer) {
         if (resendTimer > 0) {
@@ -95,20 +111,32 @@ fun OTPVerificationScreen(
 
         // Web password-reset flow: the code is verified together with the new password on the next screen.
         if (purpose == "password-reset") {
-            onResetCodeEntered(code)
+            success = true
+            scope.launch {
+                delay(1500)
+                onResetCodeEntered(code)
+            }
             return
         }
 
         loading = true
         scope.launch {
-            val (success, errMsg) = BzeadRepository.verifyOtp(email, code, type = purpose)
+            val (verified, errMsg) = BzeadRepository.verifyOtp(email, code, type = purpose)
             loading = false
-            if (success) {
-                onVerificationSuccess()
+            if (verified) {
+                success = true
+                scope.launch {
+                    delay(2000)
+                    onVerificationSuccess()
+                }
             } else if (errMsg == BzeadRepository.ALREADY_CONFIRMED) {
-                onAlreadyConfirmed()
+                error = "This account is already verified. Redirecting to login..."
+                scope.launch {
+                    delay(2000)
+                    onAlreadyConfirmed()
+                }
             } else {
-                error = errMsg ?: "Invalid or expired verification code"
+                error = errMsg ?: "Failed to verify OTP. Please try again."
             }
         }
     }
@@ -117,14 +145,14 @@ fun OTPVerificationScreen(
         if (!canResend || resending) return
         resending = true
         error = null
+        resendTimer = 30
+        canResend = false
+        otpCode = ""
         scope.launch {
-            val (success, errMsg) = BzeadRepository.resendOtp(email, type = purpose)
+            val (sent, errMsg) = BzeadRepository.resendOtp(email, type = purpose)
             resending = false
-            if (success) {
-                noticeMessage = "OTP resent successfully. Please check your inbox and spam folder."
-                resendTimer = 30
-                canResend = false
-                otpCode = ""
+            if (sent) {
+                noticeMessage = "OTP resent successfully. Please check inbox, spam, and promotions tabs."
             } else {
                 error = errMsg ?: "Failed to resend OTP"
             }
@@ -134,9 +162,9 @@ fun OTPVerificationScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFFF8FAFC))
+            .background(Brush.linearGradient(listOf(Color(0xFFDBEAFE), Color(0xFFEFF6FF), Color.White)))
     ) {
-        BuyerAuthNav(onNavigateBack = onNavigateBack)
+        BuyerAuthNav(onNavigateBack = onNavigateBack, onNavigateHome = onNavigateHome)
 
         Column(
             modifier = Modifier
@@ -155,6 +183,48 @@ fun OTPVerificationScreen(
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
+                    if (success) {
+                        AuthBrandMark()
+                        Spacer(modifier = Modifier.height(20.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(64.dp)
+                                .background(Color(0xFFDCFCE7), RoundedCornerShape(32.dp))
+                                .align(Alignment.CenterHorizontally),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF16A34A), modifier = Modifier.size(48.dp))
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Email Verified!",
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFF0F172A),
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Your account has been successfully created.",
+                            fontSize = 14.sp,
+                            color = Color(0xFF64748B),
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = TextAlign.Center
+                        )
+                        Text(
+                            text = "Redirecting to homepage...",
+                            fontSize = 12.sp,
+                            color = Color(0xFF94A3B8),
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                            textAlign = TextAlign.Center
+                        )
+                        CircularProgressIndicator(
+                            color = Color.Black,
+                            modifier = Modifier.padding(top = 16.dp).size(24.dp).align(Alignment.CenterHorizontally),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
                     // Back link
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -179,8 +249,8 @@ fun OTPVerificationScreen(
                     }
 
                     AuthCardHeader(
-                        title = "Verify Your Email",
-                        subtitle = "Enter the 6-digit code sent to\n$email"
+                        title = "Verify your email",
+                        subtitle = "We've sent a 6-digit code to $email\nCheck inbox, spam, and promotions tabs."
                     )
 
                     Spacer(modifier = Modifier.height(16.dp))
@@ -197,7 +267,7 @@ fun OTPVerificationScreen(
 
                     // 6-digit OTP code input
                     Text(
-                        text = "Verification Code",
+                        text = "Enter OTP Code",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = Color(0xFF334155),
@@ -278,7 +348,7 @@ fun OTPVerificationScreen(
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("Verifying...", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                         } else {
-                            Text("Verify Code", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            Text("Verify OTP", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                         }
                     }
 
@@ -350,6 +420,7 @@ fun OTPVerificationScreen(
                         modifier = Modifier.fillMaxWidth(),
                         textAlign = TextAlign.Center
                     )
+                    }
                 }
             }
         }

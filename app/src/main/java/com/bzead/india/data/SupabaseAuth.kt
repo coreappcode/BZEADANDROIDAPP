@@ -7,6 +7,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 
 data class AuthSession(
     val accessToken: String,
@@ -105,7 +106,8 @@ object SupabaseAuth {
     )
 
     suspend fun signUp(email: String, password: String, data: JSONObject) = run(
-        "POST", "/signup",
+        "POST",
+        "/signup?redirect_to=" + URLEncoder.encode("https://www.bzead.in/otp-verification", Charsets.UTF_8.name()),
         JSONObject().put("email", email).put("password", password).put("data", data)
     )
 
@@ -118,7 +120,11 @@ object SupabaseAuth {
         "POST", "/resend", JSONObject().put("type", "signup").put("email", email)
     )
 
-    suspend fun recover(email: String) = run("POST", "/recover", JSONObject().put("email", email))
+    suspend fun recover(email: String) = run(
+        "POST",
+        "/recover?redirect_to=" + URLEncoder.encode("https://www.bzead.in/new-password", Charsets.UTF_8.name()),
+        JSONObject().put("email", email)
+    )
 
     suspend fun updateUser(accessToken: String, body: JSONObject) =
         run("PUT", "/user", body, accessToken)
@@ -134,21 +140,62 @@ object SupabaseAuth {
     /** Reads the caller's own `profiles` row via PostgREST using the user's token. */
     suspend fun fetchProfile(accessToken: String, userId: String): JSONObject? =
         withContext(Dispatchers.IO) {
-            try {
-                val conn = URL("${SupabaseClient.BASE_URL}/profiles?id=eq.$userId&select=*")
-                    .openConnection() as HttpURLConnection
-                conn.setRequestProperty("apikey", SupabaseClient.ANON_KEY)
-                conn.setRequestProperty("Authorization", "Bearer $accessToken")
-                conn.setRequestProperty("Accept", "application/json")
-                conn.connectTimeout = 10000
-                conn.readTimeout = 10000
-                if (conn.responseCode != 200) return@withContext null
-                val arr = org.json.JSONArray(conn.inputStream.bufferedReader().use { it.readText() })
-                if (arr.length() > 0) arr.getJSONObject(0) else null
-            } catch (e: Exception) {
-                null
+            repeat(3) { attempt ->
+                try {
+                    val conn = URL("${SupabaseClient.BASE_URL}/profiles?id=eq.$userId&select=*")
+                        .openConnection() as HttpURLConnection
+                    try {
+                        conn.setRequestProperty("apikey", SupabaseClient.ANON_KEY)
+                        conn.setRequestProperty("Authorization", "Bearer $accessToken")
+                        conn.setRequestProperty("Accept", "application/json")
+                        conn.connectTimeout = 10000
+                        conn.readTimeout = 10000
+                        if (conn.responseCode == 200) {
+                            val arr = org.json.JSONArray(conn.inputStream.bufferedReader().use { it.readText() })
+                            if (arr.length() > 0) return@withContext arr.getJSONObject(0)
+                        }
+                    } finally {
+                        conn.disconnect()
+                    }
+                } catch (ignored: Exception) {
+                }
+                if (attempt < 2) kotlinx.coroutines.delay(1000)
             }
+            null
         }
+
+    /** Persists the pending buyer profile fields after signup OTP verification, as the web OTP page does. */
+    suspend fun saveSignupProfile(accessToken: String, userId: String, email: String, updates: JSONObject) {
+        withContext(Dispatchers.IO) {
+            val row = JSONObject(updates.toString())
+                .put("id", userId)
+                .put("email", email)
+            val client = okhttp3.OkHttpClient()
+            val upsert = okhttp3.Request.Builder()
+                .url("${SupabaseClient.BASE_URL}/profiles?on_conflict=id")
+                .post(row.toString().toRequestBody("application/json".toMediaType()))
+                .header("apikey", SupabaseClient.ANON_KEY)
+                .header("Authorization", "Bearer $accessToken")
+                .header("Prefer", "resolution=merge-duplicates,return=minimal")
+                .build()
+            val upsertOk = try {
+                client.newCall(upsert).execute().use { it.isSuccessful }
+            } catch (ignored: Exception) {
+                false
+            }
+            if (!upsertOk) {
+                val fallback = okhttp3.Request.Builder()
+                    .url("${SupabaseClient.BASE_URL}/profiles?id=eq.$userId")
+                    .patch(updates.toString().toRequestBody("application/json".toMediaType()))
+                    .header("apikey", SupabaseClient.ANON_KEY)
+                    .header("Authorization", "Bearer $accessToken")
+                    .header("Prefer", "return=minimal")
+                    .build()
+                runCatching { client.newCall(fallback).execute().close() }
+            }
+            updateUser(accessToken, JSONObject().put("data", updates))
+        }
+    }
 
     /** Fill-only update, mirrors web `profiles.update({country_id}).eq(id).is(country_id, null)`. */
     suspend fun fillProfileCountry(accessToken: String, userId: String, countryId: String) {

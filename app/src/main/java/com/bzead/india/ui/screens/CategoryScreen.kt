@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.item
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
@@ -31,9 +32,14 @@ import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.Badge
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Slider
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -75,7 +81,8 @@ fun CategoryScreen(
     onNavigateToCart: () -> Unit = {},
     onNavigateToWishlist: () -> Unit = {},
     snackbarHostState: SnackbarHostState,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isCategoryPage: Boolean = false
 ) {
     val mainDepartments by BzeadRepository.mainDepartments.collectAsState()
     val categorySectionsMap by BzeadRepository.categorySectionsMap.collectAsState()
@@ -96,7 +103,37 @@ fun CategoryScreen(
 
     var selectedSubcategoryFilter by remember { mutableStateOf<String?>(null) }
     var selectedSubcategoryId by remember { mutableStateOf<String?>(null) }
+    var sortBy by remember { mutableStateOf("featured") }
+    var showProductFilters by remember { mutableStateOf(false) }
+    var showProductSort by remember { mutableStateOf(false) }
+    var minimumRating by remember { mutableStateOf(0) }
+    var inStockOnly by remember { mutableStateOf(false) }
+    var minimumPrice by remember { mutableStateOf(0f) }
+    var maximumPrice by remember { mutableStateOf(200000f) }
     val categoryProducts by BzeadRepository.categoryProducts.collectAsState()
+    val selectedProducts = categoryProducts[selectedSubcategoryId].orEmpty()
+    val priceCeiling = remember(selectedProducts) {
+        (kotlin.math.ceil((selectedProducts.maxOfOrNull { it.price } ?: 200000.0) / 1000.0) * 1000.0)
+            .coerceAtLeast(1000.0).toFloat()
+    }
+    val displayedCategoryProducts = remember(selectedProducts, minimumRating, inStockOnly, minimumPrice, maximumPrice, sortBy) {
+        val matching = selectedProducts.filter { product ->
+            product.price >= minimumPrice && product.price <= maximumPrice &&
+                (minimumRating == 0 || product.rating >= minimumRating) &&
+                (!inStockOnly || product.inStock)
+        }
+        when (sortBy) {
+            "price-low-high" -> matching.sortedBy { it.price }
+            "price-high-low" -> matching.sortedByDescending { it.price }
+            "rating" -> matching.sortedByDescending { it.rating }
+            "newest" -> matching.sortedByDescending { it.createdAt }
+            else -> matching
+        }
+    }
+    LaunchedEffect(priceCeiling, selectedSubcategoryId) {
+        minimumPrice = 0f
+        maximumPrice = priceCeiling
+    }
     var categoryLoading by remember { mutableStateOf(false) }
     androidx.compose.runtime.LaunchedEffect(selectedSubcategoryId) {
         val id = selectedSubcategoryId ?: return@LaunchedEffect
@@ -104,7 +141,6 @@ fun CategoryScreen(
         BzeadRepository.loadCategoryProducts(id)
         categoryLoading = false
     }
-    var sortBy by remember { mutableStateOf("featured") }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
@@ -112,10 +148,25 @@ fun CategoryScreen(
     }
 
     // The department list loads asynchronously; apply the requested category once it is known.
-    LaunchedEffect(mainDepartments) {
-        if (mainDepartments.none { it.id == selectedDepartmentId }) {
-            mainDepartments.firstOrNull { it.id == initialCategoryId || it.name.equals(initialCategoryId, ignoreCase = true) }
-                ?.let { selectedDepartmentId = it.id }
+    LaunchedEffect(mainDepartments, categorySectionsMap, initialCategoryId, isCategoryPage) {
+        val requested = mainDepartments.firstOrNull {
+            it.id == initialCategoryId || it.name.equals(initialCategoryId, ignoreCase = true)
+        }
+        val requestedSection = categorySectionsMap.entries.firstOrNull { (_, sections) ->
+            sections.any { section -> section.id == initialCategoryId || section.items.any { it.id == initialCategoryId } }
+        }
+        val requestedSubcategory = requestedSection?.value?.firstOrNull { section ->
+            section.id == initialCategoryId || section.items.any { it.id == initialCategoryId }
+        }
+        if (requested != null) selectedDepartmentId = requested.id
+        else if (isCategoryPage && requestedSection != null) selectedDepartmentId = requestedSection.key
+        else if (mainDepartments.none { it.id == selectedDepartmentId }) mainDepartments.firstOrNull()?.let { selectedDepartmentId = it.id }
+        if (isCategoryPage && mainDepartments.isNotEmpty() && selectedSubcategoryId == null) {
+            selectedSubcategoryFilter = requested?.name
+                ?: requestedSubcategory?.items?.firstOrNull { it.id == initialCategoryId }?.name
+                ?: requestedSubcategory?.title
+                ?: initialCategoryId
+            selectedSubcategoryId = requested?.id ?: initialCategoryId
         }
     }
 
@@ -129,6 +180,17 @@ fun CategoryScreen(
     } else {
         emptyList()
     }
+    val groupedProducts = remember(sections, displayedCategoryProducts) {
+        sections.mapNotNull { section ->
+            val nodeIds = (listOf(section.id) + section.items.map { it.id }).toSet()
+            val matches = displayedCategoryProducts.filter { product ->
+                product.categoryId in nodeIds || product.subCategoryId in nodeIds || product.productTypeId in nodeIds
+            }
+            if (matches.isEmpty()) null else section.title to matches
+        }
+    }
+    val groupedProductIds = groupedProducts.flatMap { it.second }.map { it.id }.toSet()
+    val uncategorizedCategoryProducts = displayedCategoryProducts.filterNot { it.id in groupedProductIds }
 
     Column(
         modifier = modifier
@@ -150,7 +212,7 @@ fun CategoryScreen(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "CATEGORIES",
+                    text = if (isCategoryPage) (selectedSubcategoryFilter ?: selectedDepartment?.name ?: "CATEGORIES").uppercase() else "CATEGORIES",
                     fontWeight = FontWeight.Bold,
                     fontSize = 17.sp,
                     color = Color.White,
@@ -264,24 +326,43 @@ fun CategoryScreen(
             }
 
             // Filtered Products View
-            val filteredProds = categoryProducts[selectedSubcategoryId].orEmpty()
-
-            if (categoryLoading && filteredProds.isEmpty()) {
+            if (categoryLoading && selectedProducts.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     androidx.compose.material3.CircularProgressIndicator()
                 }
-            } else if (filteredProds.isEmpty()) {
+            }
+            if (!categoryLoading) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    androidx.compose.material3.OutlinedButton(onClick = { showProductFilters = true }) {
+                        androidx.compose.material3.Icon(Icons.Default.FilterList, contentDescription = null)
+                        Text(" Filters")
+                    }
+                    androidx.compose.material3.OutlinedButton(onClick = { showProductSort = true }) {
+                        Text("Sort: ${when (sortBy) { "price-low-high" -> "Price: Low to High"; "price-high-low" -> "Price: High to Low"; "rating" -> "Avg. Customer Review"; "newest" -> "Newest Arrivals"; else -> "Featured" }}")
+                    }
+                }
+            }
+            if (!categoryLoading && displayedCategoryProducts.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("No products found for", color = TextSecondary, fontSize = 13.sp)
+                        Text("No products found", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text("\"$selectedSubcategoryFilter\"", color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        Text("Try adjusting your filters or browse a different category.", color = TextSecondary, fontSize = 13.sp)
+                        if (minimumRating > 0 || inStockOnly || minimumPrice > 0f || maximumPrice < priceCeiling) {
+                            TextButton(onClick = {
+                                minimumRating = 0; inStockOnly = false; minimumPrice = 0f; maximumPrice = priceCeiling; sortBy = "featured"
+                            }) { Text("Clear Filters", color = BzeadPrimary) }
+                        }
                     }
                 }
-            } else {
+            } else if (!categoryLoading) {
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(2),
                     modifier = Modifier.fillMaxSize(),
@@ -289,19 +370,66 @@ fun CategoryScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(filteredProds) { product ->
-                        ProductCard(
-                            product = product,
-                            isWishlisted = wishlistIds.contains(product.id),
-                            onProductClick = { onNavigateToProduct(product.id) },
-                            onWishlistToggle = { BzeadRepository.toggleWishlist(product.id) },
-                            onAddToCart = {
-                                BzeadRepository.addToCart(product)
-                                scope.launch {
-                                    snackbarHostState.showSnackbar("Added to Bag: ${product.title}")
-                                }
+                    if (isCategoryPage && selectedSubcategoryId == selectedDepartment?.id && sections.isNotEmpty()) {
+                        groupedProducts.forEach { (title, products) ->
+                            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                                Text(
+                                    title,
+                                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp),
+                                    fontSize = 17.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF111827)
+                                )
                             }
-                        )
+                            items(products, key = { "${title}_${it.id}" }) { product ->
+                                ProductCard(
+                                    product = product,
+                                    isWishlisted = wishlistIds.contains(product.id),
+                                    onProductClick = { onNavigateToProduct(product.id) },
+                                    onWishlistToggle = { BzeadRepository.toggleWishlist(product.id) },
+                                    onAddToCart = {
+                                        BzeadRepository.addToCart(product)
+                                        scope.launch { snackbarHostState.showSnackbar("Added to Bag: ${product.title}") }
+                                    }
+                                )
+                            }
+                        }
+                        if (uncategorizedCategoryProducts.isNotEmpty()) {
+                            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                                Text(
+                                    "Other in ${selectedDepartment?.name.orEmpty()}",
+                                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp),
+                                    fontSize = 17.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF111827)
+                                )
+                            }
+                            items(uncategorizedCategoryProducts, key = { "other_${it.id}" }) { product ->
+                                ProductCard(
+                                    product = product,
+                                    isWishlisted = wishlistIds.contains(product.id),
+                                    onProductClick = { onNavigateToProduct(product.id) },
+                                    onWishlistToggle = { BzeadRepository.toggleWishlist(product.id) },
+                                    onAddToCart = {
+                                        BzeadRepository.addToCart(product)
+                                        scope.launch { snackbarHostState.showSnackbar("Added to Bag: ${product.title}") }
+                                    }
+                                )
+                            }
+                        }
+                    } else {
+                        items(displayedCategoryProducts, key = { it.id }) { product ->
+                            ProductCard(
+                                product = product,
+                                isWishlisted = wishlistIds.contains(product.id),
+                                onProductClick = { onNavigateToProduct(product.id) },
+                                onWishlistToggle = { BzeadRepository.toggleWishlist(product.id) },
+                                onAddToCart = {
+                                    BzeadRepository.addToCart(product)
+                                    scope.launch { snackbarHostState.showSnackbar("Added to Bag: ${product.title}") }
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -328,6 +456,11 @@ fun CategoryScreen(
                                 .clickable {
                                     selectedDepartmentId = dept.id
                                     selectedSubcategoryFilter = null
+                                    selectedSubcategoryId = null
+                                    minimumRating = 0
+                                    inStockOnly = false
+                                    minimumPrice = 0f
+                                    maximumPrice = 200000f
                                 }
                                 .padding(vertical = 12.dp, horizontal = 4.dp)
                                 .testTag("left_rail_dept_${dept.id}")
@@ -531,6 +664,63 @@ fun CategoryScreen(
                 }
             }
         }
+    }
+
+    if (showProductSort) {
+        AlertDialog(
+            onDismissRequest = { showProductSort = false },
+            title = { Text("Sort By") },
+            text = {
+                Column {
+                    listOf("featured", "price-low-high", "price-high-low", "rating", "newest").forEach { option ->
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                            RadioButton(selected = sortBy == option, onClick = { sortBy = option; showProductSort = false })
+                            Text(when (option) {
+                                "price-low-high" -> "Price: Low to High"
+                                "price-high-low" -> "Price: High to Low"
+                                "rating" -> "Avg. Customer Review"
+                                "newest" -> "Newest Arrivals"
+                                else -> "Featured"
+                            })
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showProductSort = false }) { Text("Done") } }
+        )
+    }
+
+    if (showProductFilters) {
+        AlertDialog(
+            onDismissRequest = { showProductFilters = false },
+            title = { Text("Filters", fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text("Price", fontWeight = FontWeight.SemiBold)
+                    Text("Min: ₹${minimumPrice.toInt()}")
+                    Slider(value = minimumPrice, onValueChange = { minimumPrice = it.coerceAtMost(maximumPrice) }, valueRange = 0f..priceCeiling)
+                    Text("Max: ₹${maximumPrice.toInt()}")
+                    Slider(value = maximumPrice, onValueChange = { maximumPrice = it.coerceAtLeast(minimumPrice) }, valueRange = 0f..priceCeiling)
+                    Text("Customer Review", fontWeight = FontWeight.SemiBold)
+                    listOf(4, 3, 2, 1).forEach { rating ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = minimumRating == rating, onCheckedChange = { minimumRating = if (minimumRating == rating) 0 else rating })
+                            Text("${"⭐".repeat(rating)} $rating+ Stars")
+                        }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = inStockOnly, onCheckedChange = { inStockOnly = it })
+                        Text("In Stock Only")
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showProductFilters = false }) { Text("Show Results") } },
+            dismissButton = {
+                TextButton(onClick = {
+                    minimumRating = 0; inStockOnly = false; minimumPrice = 0f; maximumPrice = priceCeiling; showProductFilters = false
+                }) { Text("Reset") }
+            }
+        )
     }
 }
 
