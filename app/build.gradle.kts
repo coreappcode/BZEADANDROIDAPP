@@ -26,16 +26,25 @@ android {
   // and updating Android apps in AI Studio.
   signingConfigs {
     create("release") {
-      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/bzead-india-upload-key.jks"
-      val passwordFile = file("${rootDir}/bzead-india-upload-key-password.txt")
+      val desktopKeystore = file("C:/Users/DHIJIN LAL M/Desktop/bzindiakeys/bzead-india-upload-key.jks")
+      val rootKeystore = file("${rootDir}/bzead-india-upload-key.jks")
+      val keystoreFile = if (rootKeystore.exists()) rootKeystore else desktopKeystore
+      val keystorePath = System.getenv("KEYSTORE_PATH") ?: keystoreFile.absolutePath
+
+      val desktopPasswordFile = file("C:/Users/DHIJIN LAL M/Desktop/bzindiakeys/bzead-india-upload-key-password.txt")
+      val rootPasswordFile = file("${rootDir}/bzead-india-upload-key-password.txt")
+      val passwordFile = if (rootPasswordFile.exists()) rootPasswordFile else desktopPasswordFile
       val filePassword = if (passwordFile.exists()) passwordFile.readLines().firstOrNull()?.trim() else null
+
       storeFile = file(keystorePath)
       storePassword = System.getenv("STORE_PASSWORD") ?: filePassword
       keyAlias = System.getenv("KEY_ALIAS") ?: "bzead-india-upload"
       keyPassword = System.getenv("KEY_PASSWORD") ?: filePassword
     }
+    val rootDebugKeystore = file("${rootDir}/debug.keystore")
+    val defaultDebugKeystore = file("${System.getProperty("user.home")}/.android/debug.keystore")
     create("debugConfig") {
-      storeFile = file("${rootDir}/debug.keystore")
+      storeFile = if (rootDebugKeystore.exists()) rootDebugKeystore else defaultDebugKeystore
       storePassword = "android"
       keyAlias = "androiddebugkey"
       keyPassword = "android"

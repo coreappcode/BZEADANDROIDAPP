@@ -157,7 +157,7 @@ fun HomeScreen(
                     }
                 }
 
-                item { CategoriesGrid3Col(effectiveCategories, onNavigateToCategory) }
+                // Category icon section removed from home page since a separate Category tab/page exists.
 
                 productSection("Featured Products", "featured", featuredProducts, hasSponsored, wishlistIds, onNavigateToSection, onNavigateToProduct, onNavigateToLogin, isLoading)
                 item { AdBannerBetweenSections(adBanners.filter { it.adSlot == 1 }, onOpenLink) }

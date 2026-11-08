@@ -13,9 +13,21 @@ data class SearchProductPage(val products: List<Product>, val totalCount: Int)
 
 object SupabaseClient {
 
-    internal const val HOST_URL = "https://aiiefgjfftmerayihpbv.supabase.co"
-    internal const val BASE_URL = "$HOST_URL/rest/v1"
-    internal const val ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFpaWVmZ2pmZnRtZXJheWlocGJ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzExOTc2MDksImV4cCI6MjA4Njc3MzYwOX0.sbXOq4-CAezq-6mbF7wi5XYVYBakzjb9xjGmU77AZ2M"
+    internal val HOST_URL: String = try {
+        com.bzead.india.BuildConfig::class.java.getField("SUPABASE_URL").get(null)?.toString()?.takeIf { it.isNotBlank() }
+            ?: "https://aiiefgjfftmerayihpbv.supabase.co"
+    } catch (e: Exception) {
+        "https://aiiefgjfftmerayihpbv.supabase.co"
+    }
+
+    internal val BASE_URL = "$HOST_URL/rest/v1"
+
+    internal val ANON_KEY: String = try {
+        com.bzead.india.BuildConfig::class.java.getField("SUPABASE_ANON_KEY").get(null)?.toString()?.takeIf { it.isNotBlank() }
+            ?: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFpaWVmZ2pmZnRtZXJheWlocGJ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzExOTc2MDksImV4cCI6MjA4Njc3MzYwOX0.sbXOq4-CAezq-6mbF7wi5XYVYBakzjb9xjGmU77AZ2M"
+    } catch (e: Exception) {
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFpaWVmZ2pmZnRtZXJheWlocGJ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzExOTc2MDksImV4cCI6MjA4Njc3MzYwOX0.sbXOq4-CAezq-6mbF7wi5XYVYBakzjb9xjGmU77AZ2M"
+    }
 
     private const val PRODUCT_FIELDS =
         "id,public_product_id,name,slug,description,price,mrp,discount_price,currency,image_url,images,seller_id,category,brand,stock,rating,review_count,is_featured,tags,item_condition,created_at"
@@ -69,8 +81,14 @@ object SupabaseClient {
     private fun firstActiveOfferSummary(arr: org.json.JSONArray?): String? {
         if (arr == null) return null
         val now = System.currentTimeMillis()
-        fun ts(v: String): Long? = try { java.time.Instant.parse(v).toEpochMilli() } catch (e: Exception) {
-            try { java.time.OffsetDateTime.parse(v).toInstant().toEpochMilli() } catch (e2: Exception) { null }
+        fun ts(v: String): Long? {
+            return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                try { java.time.Instant.parse(v).toEpochMilli() } catch (e: Exception) {
+                    try { java.time.OffsetDateTime.parse(v).toInstant().toEpochMilli() } catch (e2: Exception) { null }
+                }
+            } else {
+                try { java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US).parse(v)?.time } catch (e: Exception) { null }
+            }
         }
         for (i in 0 until arr.length()) {
             val o = arr.optJSONObject(i) ?: continue

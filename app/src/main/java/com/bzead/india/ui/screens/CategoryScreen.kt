@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.FilterList
@@ -482,6 +483,9 @@ fun CategoryScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 // Department Circle Avatar
+                                val deptImageUrl = dept.iconUrl.ifBlank { com.bzead.india.data.getCategoryImageUrl(dept.name) }
+                                var deptImageFailed by remember(dept.id) { mutableStateOf(false) }
+
                                 Box(
                                     modifier = Modifier
                                         .size(46.dp)
@@ -494,14 +498,24 @@ fun CategoryScreen(
                                         ),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    AsyncImage(
-                                        model = dept.iconUrl,
-                                        contentDescription = dept.name,
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .clip(CircleShape)
-                                    )
+                                    if (deptImageUrl.isNotBlank() && !deptImageFailed) {
+                                        AsyncImage(
+                                            model = deptImageUrl,
+                                            contentDescription = dept.name,
+                                            contentScale = ContentScale.Crop,
+                                            onError = { deptImageFailed = true },
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .clip(CircleShape)
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Default.Category,
+                                            contentDescription = null,
+                                            tint = if (isSelected) BzeadHeaderNavy else Color(0xFF94A3B8),
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
                                 }
 
                                 Spacer(modifier = Modifier.height(6.dp))
@@ -614,6 +628,15 @@ fun CategoryScreen(
                                                             horizontalAlignment = Alignment.CenterHorizontally
                                                         ) {
                                                             // Subcategory Icon / Image Avatar
+                                                            val subImageUrl = subItem.iconUrl.ifBlank {
+                                                                com.bzead.india.data.getCategoryImageUrl(
+                                                                    name = subItem.name,
+                                                                    parentName = section.title,
+                                                                    deptName = selectedDepartment?.name.orEmpty()
+                                                                )
+                                                            }
+                                                            var subImageFailed by remember(subItem.id) { mutableStateOf(false) }
+
                                                             Box(
                                                                 modifier = Modifier
                                                                     .size(52.dp)
@@ -622,14 +645,24 @@ fun CategoryScreen(
                                                                     .border(0.5.dp, Color(0xFFE2E8F0), CircleShape),
                                                                 contentAlignment = Alignment.Center
                                                             ) {
-                                                                AsyncImage(
-                                                                    model = subItem.iconUrl.ifBlank { selectedDepartment?.iconUrl ?: "" },
-                                                                    contentDescription = subItem.name,
-                                                                    contentScale = ContentScale.Crop,
-                                                                    modifier = Modifier
-                                                                        .fillMaxSize()
-                                                                        .clip(CircleShape)
-                                                                )
+                                                                if (subImageUrl.isNotBlank() && !subImageFailed) {
+                                                                    AsyncImage(
+                                                                        model = subImageUrl,
+                                                                        contentDescription = subItem.name,
+                                                                        contentScale = ContentScale.Crop,
+                                                                        onError = { subImageFailed = true },
+                                                                        modifier = Modifier
+                                                                            .fillMaxSize()
+                                                                            .clip(CircleShape)
+                                                                    )
+                                                                } else {
+                                                                    Icon(
+                                                                        imageVector = Icons.Default.Category,
+                                                                        contentDescription = null,
+                                                                        tint = Color(0xFF94A3B8),
+                                                                        modifier = Modifier.size(24.dp)
+                                                                    )
+                                                                }
                                                             }
 
                                                             Spacer(modifier = Modifier.height(6.dp))

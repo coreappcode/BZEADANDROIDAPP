@@ -95,7 +95,6 @@ fun BzeadTopHeader(
     val sections by BzeadRepository.categorySectionsMap.collectAsState()
     val scope = rememberCoroutineScope()
 
-    var menuOpen by remember { mutableStateOf(false) }
     var logoFailed by remember { mutableStateOf(false) }
     var showLogout by remember { mutableStateOf(false) }
     var loggingOut by remember { mutableStateOf(false) }
@@ -103,10 +102,6 @@ fun BzeadTopHeader(
     var panelOpen by remember { mutableStateOf(false) }
     var drillMain by remember { mutableStateOf<CategoryItem?>(null) }
     var drillDept by remember { mutableStateOf<SubCategorySection?>(null) }
-
-    val displayName = userName?.takeIf { it.isNotBlank() }
-        ?: userEmail?.substringBefore('@')?.takeIf { it.isNotBlank() }
-        ?: "User"
 
     Column(modifier = Modifier.fillMaxWidth().testTag("bzead_top_header")) {
         Column(modifier = Modifier.fillMaxWidth().background(HeaderBg).statusBarsPadding()) {
@@ -130,72 +125,6 @@ fun BzeadTopHeader(
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                     HeaderIconButton(Icons.Outlined.FavoriteBorder, "Wishlist", wishlistCount, "header_wishlist_button") {
                         if (!isLoggedIn) onNavigateToLogin() else onWishlistClick()
-                    }
-                    HeaderIconButton(Icons.Outlined.ShoppingCart, "Cart", if (isLoggedIn) cartCount else 0, "header_cart_button") {
-                        if (!isLoggedIn) onNavigateToLogin() else onCartClick()
-                    }
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (menuOpen) Color.White.copy(alpha = 0.10f) else Color.White.copy(alpha = 0.05f))
-                            .border(1.dp, if (menuOpen) Gold else Gold.copy(alpha = 0.7f), RoundedCornerShape(8.dp))
-                            .clickable { menuOpen = !menuOpen },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            if (menuOpen) Icons.Default.Close else Icons.Default.Menu,
-                            contentDescription = if (menuOpen) "Close menu" else "Open menu",
-                            tint = if (menuOpen) Gold else Color.White,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
-            }
-            if (menuOpen) {
-                Box(modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 12.dp)) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(MenuPanelBg)
-                            .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(16.dp))
-                            .padding(12.dp)
-                    ) {
-                        if (isLoggedIn) {
-                            Text(displayName, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(start = 4.dp, end = 4.dp, bottom = 8.dp))
-                            MenuLinks {
-                                MenuRow(Icons.Outlined.Person, "Profile") { menuOpen = false; onNavigateToProfile() }
-                                MenuRow(Icons.Outlined.Inventory2, "Track Order") { menuOpen = false; onNavigateToOrders() }
-                                MenuRow(Icons.Outlined.Notifications, "Notifications") { menuOpen = false; onNavigateToNotifications() }
-                                MenuRow(Icons.Outlined.Logout, "Log Out", danger = true) { menuOpen = false; showLogout = true }
-                            }
-                        } else {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier.weight(1f).height(36.dp).clip(RoundedCornerShape(8.dp))
-                                        .background(Gold).clickable { menuOpen = false; onNavigateToLogin() },
-                                    contentAlignment = Alignment.Center
-                                ) { Text("Login", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = HeaderBg) }
-                                Box(
-                                    modifier = Modifier.weight(1f).height(36.dp).clip(RoundedCornerShape(8.dp))
-                                        .border(1.dp, Gold, RoundedCornerShape(8.dp))
-                                        .clickable { menuOpen = false; onNavigateToSignup() },
-                                    contentAlignment = Alignment.Center
-                                ) { Text("Sign Up", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Gold) }
-                            }
-                        }
-                        MenuLinks {
-                            MenuRow(Icons.Outlined.Store, "Become a Seller") { menuOpen = false; showSellerConfirm = true }
-                            MenuRow(Icons.Outlined.Headphones, "Help & Support") { menuOpen = false; onNavigateToContact() }
-                            if (!isLoggedIn) {
-                                MenuRow(Icons.Outlined.Inventory2, "Track Order") { menuOpen = false; onNavigateToLogin() }
-                            }
-                        }
                     }
                 }
             }

@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -27,6 +28,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -133,9 +135,11 @@ fun SearchScreen(
             .fillMaxSize()
             .background(Color(0xFFF8FAFC))
     ) {
-        // Top Search Header
+        // Top Search Header with Status Bar Padding
         Surface(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding(),
             color = BzeadPrimary,
             shadowElevation = 2.dp
         ) {
@@ -205,13 +209,13 @@ fun SearchScreen(
                         if (query.isNotEmpty()) { BzeadRepository.saveSearch(query); submittedSearch = true }
                     },
                     enabled = searchQuery.isNotBlank()
-                ) { Text("Go", color = Color.Black, fontWeight = FontWeight.SemiBold) }
+                ) { Text("Go", color = Color.White, fontWeight = FontWeight.SemiBold) }
                 Spacer(modifier = Modifier.width(4.dp))
             }
         }
 
         if (searchQuery.isBlank()) {
-            // Recent searches
+            // Recent searches section
             if (recentSearches.isNotEmpty()) Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -219,7 +223,7 @@ fun SearchScreen(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(bottom = 12.dp)
+                    modifier = Modifier.padding(bottom = 10.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.History,
@@ -240,20 +244,25 @@ fun SearchScreen(
                             text = "Clear all",
                             fontSize = 12.sp,
                             color = BzeadPrimary,
+                            fontWeight = FontWeight.SemiBold,
                             modifier = Modifier.clickable { BzeadRepository.clearSearchHistory() }.padding(4.dp)
                         )
                     }
                 }
 
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                // Thin section separation line under header
+                HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 1.dp)
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Column(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    recentSearches.forEach { entry ->
+                    recentSearches.forEachIndexed { index, entry ->
                         Surface(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(16.dp))
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
                                 .clickable {
                                     val productId = entry.productId
                                     if (entry.isProductClick && !productId.isNullOrBlank()) onNavigateToProduct(productId)
@@ -261,27 +270,40 @@ fun SearchScreen(
                                 }
                                 .testTag("recent_tag_${entry.typedInput}"),
                             color = Color.White,
-                            shadowElevation = 1.dp
+                            border = androidx.compose.foundation.BorderStroke(0.8.dp, Color(0xFFE2E8F0)),
+                            shadowElevation = 0.5.dp
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(start = 14.dp, top = 8.dp, bottom = 8.dp, end = 8.dp)
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(text = entry.typedInput, fontSize = 13.sp, color = TextPrimary)
-                                    val categoryPath = listOf(entry.categoryName, entry.subCategoryName, entry.productTypeName)
-                                        .filterNotNull().joinToString(" › ")
-                                    if (categoryPath.isNotBlank()) Text(categoryPath, fontSize = 11.sp, color = TextSecondary, maxLines = 1)
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.History,
+                                        contentDescription = null,
+                                        tint = Color(0xFF94A3B8),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(text = entry.typedInput, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextPrimary)
+                                        val categoryPath = listOf(entry.categoryName, entry.subCategoryName, entry.productTypeName)
+                                            .filter { !it.isNullOrBlank() && !it.equals("null", ignoreCase = true) }
+                                            .joinToString(" › ")
+                                        if (categoryPath.isNotBlank()) Text(categoryPath, fontSize = 11.5.sp, color = TextSecondary, maxLines = 1)
+                                    }
+                                    IconButton(
+                                        onClick = { BzeadRepository.deleteSearch(entry.typedInput) },
+                                        modifier = Modifier.size(24.dp).testTag("recent_delete_${entry.typedInput}")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Clear,
+                                            contentDescription = "Remove",
+                                            tint = Color(0xFF94A3B8),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
                                 }
-                                Text(
-                                    text = "✕",
-                                    fontSize = 13.sp,
-                                    color = TextSecondary,
-                                    modifier = Modifier
-                                        .clickable { BzeadRepository.deleteSearch(entry.typedInput) }
-                                        .padding(start = 8.dp)
-                                        .testTag("recent_delete_${entry.typedInput}")
-                                )
                             }
                         }
                     }

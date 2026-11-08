@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DeleteOutline
@@ -33,7 +34,9 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -430,21 +433,24 @@ fun CartScreen(
         }
 
         if (confirmRemoveCartItemId != null) {
+            val targetItem = cartItems.firstOrNull { it.id == confirmRemoveCartItemId }
             AlertDialog(
                 onDismissRequest = { confirmRemoveCartItemId = null },
                 title = {
                     Text(
                         text = "Remove Item",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 17.sp,
-                        color = Color(0xFF0F1111)
+                        fontSize = 18.sp,
+                        color = Color(0xFF0F172A)
                     )
                 },
                 text = {
                     Text(
-                        text = "Are you sure you want to remove this item from your cart?",
+                        text = if (targetItem != null) "Are you sure you want to remove \"${targetItem.product.title}\" from your cart?"
+                        else "Are you sure you want to remove this item from your cart?",
                         fontSize = 14.sp,
-                        color = Color(0xFF555555)
+                        color = Color(0xFF475569),
+                        lineHeight = 20.sp
                     )
                 },
                 confirmButton = {
@@ -456,7 +462,7 @@ fun CartScreen(
                             }
                             confirmRemoveCartItemId = null
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB12704)),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
                         shape = RoundedCornerShape(10.dp)
                     ) {
                         Text("Remove", fontWeight = FontWeight.SemiBold, color = Color.White, fontSize = 14.sp)
@@ -467,11 +473,11 @@ fun CartScreen(
                         onClick = { confirmRemoveCartItemId = null },
                         shape = RoundedCornerShape(10.dp)
                     ) {
-                        Text("Cancel", fontWeight = FontWeight.SemiBold, color = Color(0xFF0F1111), fontSize = 14.sp)
+                        Text("Cancel", fontWeight = FontWeight.SemiBold, color = Color(0xFF1E293B), fontSize = 14.sp)
                     }
                 },
                 containerColor = Color.White,
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(16.dp)
             )
         }
     }
@@ -507,211 +513,240 @@ fun CartItemRow(
     onRemove: () -> Unit,
     onMoveToWishlist: () -> Unit
 ) {
-    Row(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .alpha(if (isUpdating) 0.5f else 1f)
-            .border(1.dp, Color(0xFFDDDDDD))
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.Top
+            .padding(vertical = 4.dp)
+            .alpha(if (isUpdating) 0.5f else 1f),
+        color = Color.White,
+        shape = RoundedCornerShape(10.dp),
+        border = androidx.compose.foundation.BorderStroke(0.8.dp, Color(0xFFE2E8F0)),
+        shadowElevation = 0.5.dp
     ) {
-        Checkbox(
-            checked = isSelected,
-            onCheckedChange = { onToggleSelect() },
-            colors = CheckboxDefaults.colors(
-                checkedColor = Color(0xFFFF9900),
-                uncheckedColor = Color(0xFF94A3B8)
-            ),
-            modifier = Modifier.size(24.dp)
-        )
-
-        Spacer(modifier = Modifier.width(10.dp))
-
-        Box(
+        Column(
             modifier = Modifier
-                .size(62.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(Color(0xFFF9F9F9))
-                .border(1.dp, Color(0xFFEEEEEE), RoundedCornerShape(8.dp))
-                .clickable { onProductClick() }
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 8.dp)
         ) {
-            if (!cartItem.product.imageUrl.isNullOrBlank()) {
-                AsyncImage(
-                    model = cartItem.product.imageUrl,
-                    contentDescription = cartItem.product.title,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Checkbox(
+                    checked = isSelected,
+                    onCheckedChange = { onToggleSelect() },
+                    colors = CheckboxDefaults.colors(
+                        checkedColor = Color(0xFFFF9900),
+                        uncheckedColor = Color(0xFF94A3B8)
+                    ),
+                    modifier = Modifier.size(20.dp)
                 )
-            } else if (cartItem.product.drawableRes != null) {
-                Image(
-                    painter = painterResource(id = cartItem.product.drawableRes),
-                    contentDescription = cartItem.product.title,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-            }
-        }
 
-        Spacer(modifier = Modifier.width(10.dp))
+                Spacer(modifier = Modifier.width(8.dp))
 
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = cartItem.product.title,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Color(0xFF0F1111),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .padding(bottom = 2.dp)
-                    .clickable { onProductClick() }
-            )
+                Box(
+                    modifier = Modifier
+                        .size(52.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0xFFF8FAFC))
+                        .border(0.5.dp, Color(0xFFE2E8F0), RoundedCornerShape(6.dp))
+                        .clickable { onProductClick() }
+                ) {
+                    if (!cartItem.product.imageUrl.isNullOrBlank()) {
+                        AsyncImage(
+                            model = cartItem.product.imageUrl,
+                            contentDescription = cartItem.product.title,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else if (cartItem.product.drawableRes != null) {
+                        Image(
+                            painter = painterResource(id = cartItem.product.drawableRes),
+                            contentDescription = cartItem.product.title,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                }
 
-            Text(
-                text = "Sold by: ${cartItem.product.brand.ifBlank { "BZEAD Seller" }}",
-                fontSize = 11.sp,
-                color = Color(0xFF888888),
-                modifier = Modifier.padding(bottom = 2.dp)
-            )
+                Spacer(modifier = Modifier.width(10.dp))
 
-            val variantDetails = buildString {
-                if (!cartItem.selectedSize.isNullOrEmpty()) append("Size: ${cartItem.selectedSize}")
-                if (!cartItem.selectedSize.isNullOrEmpty() && !cartItem.selectedColor.isNullOrEmpty()) append(" · ")
-                if (!cartItem.selectedColor.isNullOrEmpty()) append("Color: ${cartItem.selectedColor}")
-            }
-            if (variantDetails.isNotEmpty()) {
-                Text(
-                    text = variantDetails,
-                    fontSize = 11.sp,
-                    color = Color(0xFF888888),
-                    modifier = Modifier.padding(bottom = 2.dp)
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = cartItem.product.title,
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF0F172A),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.clickable { onProductClick() }
+                    )
+
+                    val displayPrice = unitPrice ?: cartItem.product.price
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.padding(top = 1.dp)
+                    ) {
+                        Text(
+                            text = formatPrice(displayPrice),
+                            fontSize = 13.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFB12704)
+                        )
+                        Text(
+                            text = "· ${cartItem.product.brand.ifBlank { "BZEAD Seller" }}",
+                            fontSize = 11.sp,
+                            color = Color(0xFF64748B),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    val variantDetails = buildString {
+                        val size = cartItem.selectedSize?.takeIf { it.isNotBlank() }
+                        val color = cartItem.selectedColor?.takeIf { it.isNotBlank() }
+                        val sku = cartItem.selectedVariantSku?.takeIf { it.isNotBlank() && size == null && color == null }
+                        if (size != null) append("Size: $size")
+                        if (size != null && color != null) append("  ·  ")
+                        if (color != null) append("Color: $color")
+                        if (sku != null) append("Variant: $sku")
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.padding(top = 2.dp)
+                    ) {
+                        if (variantDetails.isNotEmpty()) {
+                            Surface(
+                                color = Color(0xFFF1F5F9),
+                                shape = RoundedCornerShape(4.dp),
+                                border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFFCBD5E1))
+                            ) {
+                                Text(
+                                    text = variantDetails,
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFF334155),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+
+                        if (cartItem.product.stockCount > 0) {
+                            Text(
+                                text = "In Stock",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF047857),
+                                modifier = Modifier
+                                    .background(Color(0xFFD1FAE5), RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        } else {
+                            Text(
+                                text = "Out of Stock",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFFB91C1C),
+                                modifier = Modifier
+                                    .background(Color(0xFFFEE2E2), RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+
+                // Delete Trash Icon Button
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFFEF2F2))
+                        .border(0.5.dp, Color(0xFFFCA5A5), CircleShape)
+                        .clickable(enabled = !isUpdating) { onRemove() }
+                        .testTag("delete_cart_item_${cartItem.id}"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.DeleteOutline,
+                        contentDescription = "Delete item",
+                        tint = Color(0xFFDC2626),
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
             }
 
             if (unavailableReason != null) {
                 Text(
-                    text = "This option is no longer available. Delete it, or open the product and add it again.",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFFB91C1C),
-                    modifier = Modifier.padding(bottom = 4.dp)
-                )
-            }
-
-            if (cartItem.product.stockCount > 0) {
-                Text(
-                    text = "In Stock",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFF047857),
-                    modifier = Modifier
-                        .background(Color(0xFFD1FAE5), RoundedCornerShape(4.dp))
-                        .padding(horizontal = 8.dp, vertical = 2.dp)
-                )
-            } else {
-                Text(
-                    text = "Out of Stock",
+                    text = "Option unavailable. Delete or re-select.",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = Color(0xFFB91C1C),
-                    modifier = Modifier
-                        .background(Color(0xFFFEE2E2), RoundedCornerShape(4.dp))
-                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                    modifier = Modifier.padding(top = 2.dp)
                 )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            // Bottom inline row: Compact Quantity Stepper
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
                 Row(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .border(1.dp, Color(0xFFDDDDDD), RoundedCornerShape(8.dp)),
+                        .clip(RoundedCornerShape(6.dp))
+                        .border(1.dp, Color(0xFFCBD5E1), RoundedCornerShape(6.dp)),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(32.dp)
-                            .background(Color(0xFFF0F0F0))
+                            .size(28.dp)
+                            .background(Color(0xFFF1F5F9))
                             .clickable(enabled = !isUpdating) { onDecrement() },
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("−", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F1111))
+                        Text("−", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
                     }
-                    Box(modifier = Modifier.width(1.dp).height(32.dp).background(Color(0xFFDDDDDD)))
+                    Box(modifier = Modifier.width(1.dp).height(28.dp).background(Color(0xFFCBD5E1)))
                     Box(
                         modifier = Modifier
-                            .width(40.dp)
-                            .height(32.dp)
+                            .width(36.dp)
+                            .height(28.dp)
                             .background(Color.White),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = "${cartItem.quantity}",
-                            fontSize = 14.sp,
+                            fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFF0F1111)
+                            color = Color(0xFF0F172A)
                         )
                     }
-                    Box(modifier = Modifier.width(1.dp).height(32.dp).background(Color(0xFFDDDDDD)))
+                    Box(modifier = Modifier.width(1.dp).height(28.dp).background(Color(0xFFCBD5E1)))
                     Box(
                         modifier = Modifier
-                            .size(32.dp)
-                            .background(Color(0xFFF0F0F0))
+                            .size(28.dp)
+                            .background(Color(0xFFF1F5F9))
                             .clickable(enabled = !isUpdating) { onIncrement() },
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("+", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F1111))
+                        Text("+", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
                     }
                 }
 
                 if (isUpdating) {
-                    Spacer(modifier = Modifier.width(8.dp))
                     CircularProgressIndicator(
                         color = Color(0xFFFF9900),
                         strokeWidth = 2.dp,
                         modifier = Modifier.size(16.dp)
                     )
                 }
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                Text(
-                    text = "Move to Wishlist",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFF007185),
-                    modifier = Modifier.clickable(enabled = !isUpdating) { onMoveToWishlist() }
-                )
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                Icon(
-                    imageVector = Icons.Default.DeleteOutline,
-                    contentDescription = "Remove ${cartItem.product.title} from cart",
-                    tint = Color(0xFF0F1111),
-                    modifier = Modifier
-                        .clickable(enabled = !isUpdating) { onRemove() }
-                        .padding(4.dp)
-                        .size(16.dp)
-                )
             }
         }
-
-        Spacer(modifier = Modifier.width(10.dp))
-
-        Text(
-            text = when {
-                unavailableReason != null -> "Unavailable"
-                unitPrice != null -> formatPrice(unitPrice)
-                else -> "Loading…"
-            },
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color(0xFFB12704),
-            textAlign = TextAlign.End,
-            modifier = Modifier.widthIn(min = 60.dp)
-        )
     }
 }
 

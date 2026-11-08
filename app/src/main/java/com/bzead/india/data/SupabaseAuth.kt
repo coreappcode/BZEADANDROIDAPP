@@ -29,7 +29,7 @@ data class AuthCall(
 /** Supabase GoTrue REST client (same endpoints the web supabase-js client uses). */
 object SupabaseAuth {
 
-    private const val AUTH_URL = "${SupabaseClient.HOST_URL}/auth/v1"
+    private val AUTH_URL = "${SupabaseClient.HOST_URL}/auth/v1"
 
     private suspend fun call(
         method: String,

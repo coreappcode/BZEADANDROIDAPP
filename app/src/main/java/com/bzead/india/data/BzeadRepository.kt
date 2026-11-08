@@ -350,7 +350,10 @@ object BzeadRepository {
     val hasSponsored: StateFlow<Boolean> = _hasSponsored.asStateFlow()
 
     suspend fun refreshHomeContent() {
-        _isHomeLoading.value = true
+        val hasExistingContent = _featuredProducts.value.isNotEmpty() || _heroBanners.value.isNotEmpty()
+        if (!hasExistingContent) {
+            _isHomeLoading.value = true
+        }
         try {
             SupabaseClient.fetchBanners()?.let { (hero, ad) ->
                 _heroBanners.value = hero
@@ -440,10 +443,13 @@ object BzeadRepository {
     }
 
     private suspend fun loadCart(uid: String) {
-        _isCartLoading.value = true
+        val hasCachedItems = _cartItems.value.isNotEmpty()
+        if (!hasCachedItems) {
+            _isCartLoading.value = true
+        }
         try {
             var items = validToken()?.let { UserDataApi.fetchCart(it, uid) }
-            if (items == null) {
+            if (items == null && !hasCachedItems) {
                 kotlinx.coroutines.delay(500)
                 items = validToken()?.let { UserDataApi.fetchCart(it, uid) }
             }
@@ -734,16 +740,19 @@ object BzeadRepository {
     }
 
     private suspend fun loadOrders(uid: String) {
-        _ordersLoading.value = true
+        val hasCachedOrders = _orders.value.isNotEmpty()
+        if (!hasCachedOrders) {
+            _ordersLoading.value = true
+        }
         _ordersError.value = null
         try {
             val token = validToken() ?: run {
-                _ordersError.value = "Session expired. Please sign in again."
+                if (!hasCachedOrders) _ordersError.value = "Session expired. Please sign in again."
                 return
             }
             val list = UserDataApi.fetchOrders(token, uid)
             if (list == null) {
-                _ordersError.value = "Failed to load orders. Please try again."
+                if (!hasCachedOrders) _ordersError.value = "Failed to load orders. Please try again."
                 return
             }
             if (session?.userId == uid) _orders.value = list

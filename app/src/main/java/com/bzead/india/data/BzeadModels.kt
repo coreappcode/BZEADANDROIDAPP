@@ -42,6 +42,49 @@ data class SubCategorySection(
     val items: List<SubCategoryItem> = emptyList()
 )
 
+private val CATEGORY_IMAGE_MAP = mapOf(
+    "Electronics" to "ELECTRONICS.png",
+    "Fashion" to "FASHION.png",
+    "Beauty & Health" to "BEAUTY_AND_PERSONAL_CARE.png",
+    "Beauty & Personal Care" to "BEAUTY_AND_PERSONAL_CARE.png",
+    "Home & Garden" to "HOME_AND_GARDEN.png",
+    "Grocery" to "GROCERY.png",
+    "Grocery & Gourmet Food" to "GROCERY_AND_GOURMET_FOOD.png",
+    "Grocery & Gourmet" to "GROCERY_AND_GOURMET_FOOD.png",
+    "Health, Household & Baby Care" to "HEALTH_HOUSEHOLD_AND_BABY_CARE.png",
+    "Health, Household & Baby" to "HEALTH_HOUSEHOLD_AND_BABY_CARE.png",
+    "Sports & Outdoors" to "SPORTS_AND_OUTDOORS.png",
+    "Sports, Fitness & Outdoors" to "SPORTS_AND_OUTDOORS.png",
+    "Books" to "BOOKS.png",
+    "Books & Media" to "BOOKS.png",
+    "Toys, Games & Baby Products" to "TOYS_GAMES_AND_BABY_PRODUCTS.png",
+    "Toys & Baby" to "TOYS_GAMES_AND_BABY_PRODUCTS.png",
+    "Automotive & Industrial" to "AUTOMOTIVE_AND_INDUSTRIAL.png",
+    "Automotive" to "AUTOMOTIVE_AND_INDUSTRIAL.png",
+    "Jewellery & Luxury" to "JEWELLERY_AND_LUXURY.png",
+    "Medical Equipment & Supplies" to "MEDICAL_EQUIPMENT_AND_SUPPLIES.png",
+    "Safety & PPE" to "SAFETY_AND_PPE.png",
+    "Software & Digital Products" to "SOFTWARE_AND_DIGITAL_PRODUCTS.png",
+    "Industrial & Lab Supplies" to "INDUSTRIAL_AND_LAB_SUPPLIES.png",
+    "Office Supplies & Stationery" to "OFFICE_SUPPLIES_AND_STATIONERY.png",
+    "Gifts & Celebrations" to "GIFTS_AND_CELEBRATIONS.png",
+    "Combo Offers" to "COMBO_OFFERS.png",
+    "Home Appliances" to "HOME_APPLIANCES.png",
+    "Musical Instruments" to "MUSICAL_INSTRUMENTS.png",
+    "Garden & Outdoor Living" to "GARDEN_AND_OUTDOOR_LIVING.png",
+    "Travel & Luggage" to "TRAVEL_AND_LUGGAGE.png"
+)
+
+fun getCategoryImageUrl(name: String, parentName: String = "", deptName: String = ""): String {
+    val matchedFile = CATEGORY_IMAGE_MAP[name]
+        ?: CATEGORY_IMAGE_MAP.entries.firstOrNull { it.key.equals(name, ignoreCase = true) }?.value
+        ?: CATEGORY_IMAGE_MAP[parentName]
+        ?: CATEGORY_IMAGE_MAP.entries.firstOrNull { it.key.equals(parentName, ignoreCase = true) }?.value
+        ?: CATEGORY_IMAGE_MAP[deptName]
+        ?: CATEGORY_IMAGE_MAP.entries.firstOrNull { it.key.equals(deptName, ignoreCase = true) }?.value
+    return if (matchedFile != null) "https://www.bzead.com/images/$matchedFile" else ""
+}
+
 
 data class Product(
     val id: String,

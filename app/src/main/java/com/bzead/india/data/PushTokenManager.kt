@@ -17,7 +17,7 @@ object PushTokenManager {
 
     private const val PREFS = "bzead_push"
     private const val KEY_TOKEN = "fcm_token"
-    private const val FUNCTION_URL = "${SupabaseClient.HOST_URL}/functions/v1/register-push-token"
+    private val FUNCTION_URL = "${SupabaseClient.HOST_URL}/functions/v1/register-push-token"
 
     fun storedToken(context: Context): String? =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_TOKEN, null)
