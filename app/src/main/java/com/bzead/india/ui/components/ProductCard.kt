@@ -177,7 +177,10 @@ fun ProductCard(
 
             Button(
                 onClick = onAddToCart,
-                colors = ButtonDefaults.buttonColors(containerColor = BzeadPrimary),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = BzeadPrimary,
+                    contentColor = Color.White
+                ),
                 shape = RoundedCornerShape(6.dp),
                 modifier = Modifier
                     .fillMaxWidth()

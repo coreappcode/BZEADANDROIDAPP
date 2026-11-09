@@ -43,8 +43,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -74,8 +72,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material3.SnackbarHostState
 import com.bzead.india.data.BzeadRepository
-import com.bzead.india.data.SupabaseClient
-import com.bzead.india.model.CountryItem
 import com.bzead.india.model.DeliveryAddress
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -105,15 +101,11 @@ fun ProfileScreen(
     val userEmail by BzeadRepository.userEmail.collectAsState()
     val userPhone by BzeadRepository.userPhone.collectAsState()
     val userCountry by BzeadRepository.userCountry.collectAsState()
-    val userCountryId by BzeadRepository.userCountryId.collectAsState()
     val addresses by BzeadRepository.addresses.collectAsState()
     val scope = rememberCoroutineScope()
 
     var editingField by remember { mutableStateOf<String?>(null) }
     var editValue by remember { mutableStateOf("") }
-    var editCountryId by remember { mutableStateOf("") }
-    var countries by remember { mutableStateOf<List<CountryItem>>(emptyList()) }
-    var countriesMenuExpanded by remember { mutableStateOf(false) }
     var addressesLoading by remember { mutableStateOf(true) }
     var isSaving by remember { mutableStateOf(false) }
     var successMessage by remember { mutableStateOf<String?>(null) }
@@ -126,7 +118,6 @@ fun ProfileScreen(
         if (isLoggedIn) {
             addressesLoading = true
             BzeadRepository.loadUserCountry()
-            countries = SupabaseClient.fetchCountries()
             BzeadRepository.refreshAddresses()
             addressesLoading = false
         } else addressesLoading = false
@@ -145,7 +136,6 @@ fun ProfileScreen(
         when (field) {
             "name" -> editValue = userName.orEmpty()
             "phone" -> editValue = userPhone.orEmpty()
-            "country" -> editCountryId = userCountryId.orEmpty()
         }
     }
 
@@ -153,15 +143,13 @@ fun ProfileScreen(
         editingField = null
         editValue = ""
         errorMessage = null
-        countriesMenuExpanded = false
     }
 
     fun saveField(field: String) {
         isSaving = true
         errorMessage = null
         scope.launch {
-            val value = if (field == "country") editCountryId else editValue
-            val error = BzeadRepository.saveProfileField(field, value)
+            val error = BzeadRepository.saveProfileField(field, editValue)
             isSaving = false
             if (error == null) {
                 successMessage = "${field.replaceFirstChar { it.uppercase() }} updated successfully!"
@@ -243,18 +231,11 @@ fun ProfileScreen(
                         keyboardType = KeyboardType.Phone,
                         editingLabel = "Primary mobile number"
                     )
-                    ProfileCountryField(
-                        country = userCountry ?: "Not set",
-                        editing = editingField == "country",
-                        selectedCountry = countries.firstOrNull { it.id == editCountryId }?.countryName.orEmpty(),
-                        countries = countries,
-                        menuExpanded = countriesMenuExpanded,
-                        onMenuExpanded = { countriesMenuExpanded = it },
-                        onSelectCountry = { editCountryId = it; countriesMenuExpanded = false },
-                        onStartEdit = { startEditing("country") },
-                        onSave = { saveField("country") },
-                        onCancel = ::cancelEditing,
-                        isSaving = isSaving
+                    ProfileReadonlyField(
+                        label = "Country",
+                        value = userCountry.orEmpty().ifEmpty { "Not set" },
+                        hint = null,
+                        icon = Icons.Default.Public
                     )
                     ProfileReadonlyField(
                         label = "Password",
@@ -288,11 +269,6 @@ fun ProfileScreen(
                             title = "About BZEAD",
                             onClick = { onNavigateToPolicy("about") }
                         )
-                        TextButton(onClick = { confirmLogout = true }, modifier = Modifier.padding(top = 6.dp)) {
-                            Icon(Icons.Default.Logout, contentDescription = null, tint = Color(0xFFDC2626))
-                            Spacer(Modifier.width(8.dp))
-                            Text("Log out of this device", color = Color(0xFFDC2626))
-                        }
                     }
                 }
 
@@ -323,6 +299,14 @@ fun ProfileScreen(
                             Text("Manage Addresses")
                         }
                     }
+                }
+                TextButton(
+                    onClick = { confirmLogout = true },
+                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp)
+                ) {
+                    Icon(Icons.Default.Logout, contentDescription = null, tint = Color(0xFFDC2626))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Log out of this device", color = Color(0xFFDC2626))
                 }
             }
         }
@@ -475,58 +459,6 @@ private fun ProfileReadonlyField(
             hint?.let { Text(it, fontSize = 11.sp, color = ProfileMuted) }
         }
         if (actionLabel != null && onAction != null) TextButton(onClick = onAction) { Text(actionLabel, color = ProfileAmber) }
-    }
-}
-
-@Composable
-private fun ProfileCountryField(
-    country: String,
-    editing: Boolean,
-    selectedCountry: String,
-    countries: List<CountryItem>,
-    menuExpanded: Boolean,
-    onMenuExpanded: (Boolean) -> Unit,
-    onSelectCountry: (String) -> Unit,
-    onStartEdit: () -> Unit,
-    onSave: () -> Unit,
-    onCancel: () -> Unit,
-    isSaving: Boolean
-) {
-    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-        if (editing) {
-            Text("Country", fontSize = 13.sp, color = ProfileMuted, fontWeight = FontWeight.Medium)
-            Box {
-                OutlinedButton(onClick = { onMenuExpanded(true) }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
-                    Text(selectedCountry.ifBlank { "Select a country" }, color = ProfileInk)
-                }
-                DropdownMenu(expanded = menuExpanded, onDismissRequest = { onMenuExpanded(false) }) {
-                    countries.forEach { option ->
-                        DropdownMenuItem(
-                            text = { Text(option.countryName) },
-                            onClick = { onSelectCountry(option.id) }
-                        )
-                    }
-                }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onSave, enabled = !isSaving, colors = ButtonDefaults.buttonColors(containerColor = ProfileAmber)) {
-                    if (isSaving) CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
-                    else Text("Save", color = Color.White)
-                }
-                TextButton(onClick = onCancel) { Text("Cancel") }
-            }
-        } else {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Box(modifier = Modifier.size(34.dp).clip(CircleShape).background(Color(0xFFF5F3FF)), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.Public, contentDescription = null, tint = ProfileAmber, modifier = Modifier.size(17.dp))
-                }
-                Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
-                    Text("Country", fontSize = 12.sp, color = ProfileMuted)
-                    Text(country, fontSize = 14.sp, color = ProfileInk, fontWeight = FontWeight.Medium)
-                }
-                TextButton(onClick = onStartEdit) { Text("Edit", color = ProfileAmber) }
-            }
-        }
     }
 }
 
