@@ -16,7 +16,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MailOutline
@@ -26,11 +28,16 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Divider
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -46,10 +53,12 @@ import coil.compose.AsyncImage
 import com.bzead.india.data.BzeadRepository
 import com.bzead.india.model.Order
 import com.bzead.india.model.OrderStatus
+import com.bzead.india.theme.BzeadHeaderNavy
 import com.bzead.india.theme.BzeadPrimary
 import com.bzead.india.theme.TextPrimary
 import com.bzead.india.theme.TextSecondary
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OrderSuccessScreen(
     orderId: String,
@@ -65,7 +74,20 @@ fun OrderSuccessScreen(
         order.paymentStatus.lowercase() in setOf("pending", "processing", "created", "initiated")
     val email by BzeadRepository.userEmail.collectAsState()
 
-    Surface(modifier = modifier.fillMaxSize(), color = Color(0xFFEAEDed)) {
+    Column(modifier = modifier.fillMaxSize().background(Color(0xFFEAEDed))) {
+        TopAppBar(
+            title = { Text("Order Confirmation", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color.White) },
+            navigationIcon = {
+                IconButton(onClick = onContinueShopping) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                }
+            },
+            colors = TopAppBarDefaults.topAppBarColors(containerColor = BzeadHeaderNavy, titleContentColor = Color.White),
+            modifier = Modifier.statusBarsPadding()
+        )
+        HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 0.8.dp)
+
+        Surface(modifier = Modifier.weight(1f).fillMaxWidth(), color = Color(0xFFEAEDed)) {
         if (order == null || isPending) {
             Column(
                 modifier = Modifier.fillMaxSize().padding(24.dp),
@@ -170,6 +192,7 @@ fun OrderSuccessScreen(
                 }
                 item { ContactSupport(onContactSupport) }
             }
+        }
         }
     }
 }
