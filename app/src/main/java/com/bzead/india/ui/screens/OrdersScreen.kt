@@ -29,7 +29,9 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Divider
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -43,6 +45,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import com.bzead.india.theme.BzeadHeaderNavy
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -140,8 +143,10 @@ fun OrdersScreen(
             actions = {
                 Text("${orders.size} orders", color = Color.White.copy(alpha = 0.75f), fontSize = 11.sp, modifier = Modifier.padding(end = 14.dp))
             },
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF0F172A), titleContentColor = Color.White)
+            colors = TopAppBarDefaults.topAppBarColors(containerColor = BzeadHeaderNavy, titleContentColor = Color.White),
+            modifier = Modifier.statusBarsPadding()
         )
+        HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 0.8.dp)
 
         OutlinedTextField(
             value = searchQuery,

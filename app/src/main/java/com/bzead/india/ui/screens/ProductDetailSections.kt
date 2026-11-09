@@ -133,22 +133,21 @@ private fun SpecRow(label: String, value: String, first: Boolean = false) {
 @Composable
 private fun BenefitsStrip() {
     Row(
-        Modifier.fillMaxWidth().padding(top = 16.dp).heightIn(min = 96.dp)
-            .border(1.dp, Gray300, RoundedCornerShape(6.dp)).background(Color(0xFFF7F8F8), RoundedCornerShape(6.dp)).padding(8.dp),
+        Modifier.fillMaxWidth().padding(top = 16.dp)
+            .border(1.dp, Gray300, RoundedCornerShape(8.dp)).background(Color(0xFFF7F8F8), RoundedCornerShape(8.dp)).padding(vertical = 12.dp, horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         listOf(
-            Triple(Icons.Filled.Inventory2, "Free Shipping", "Free shipping for order above $100"),
-            Triple(Icons.Filled.CreditCard, "Flexible Payment", "Multiple secure payment options"),
-            Triple(Icons.Filled.Security, "24x7 Support", "We support online all days")
-        ).forEach { (icon, title, text) ->
+            Pair(Icons.Filled.Inventory2, "Free Shipping"),
+            Pair(Icons.Filled.CreditCard, "Flexible Payment"),
+            Pair(Icons.Filled.Security, "24x7 Support")
+        ).forEach { (icon, title) ->
             Column(Modifier.weight(1f).padding(horizontal = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(Modifier.size(28.dp).clip(CircleShape).background(Color(0xFFE5E7EB)), contentAlignment = Alignment.Center) {
-                    Icon(icon, null, tint = Ink, modifier = Modifier.size(15.dp))
+                Box(Modifier.size(32.dp).clip(CircleShape).background(Color(0xFFE5E7EB)), contentAlignment = Alignment.Center) {
+                    Icon(icon, null, tint = Ink, modifier = Modifier.size(16.dp))
                 }
                 Spacer(Modifier.height(4.dp))
                 Text(title, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Ink, textAlign = TextAlign.Center)
-                Text(text, fontSize = 10.sp, color = Color(0xFF666666), textAlign = TextAlign.Center)
             }
         }
     }

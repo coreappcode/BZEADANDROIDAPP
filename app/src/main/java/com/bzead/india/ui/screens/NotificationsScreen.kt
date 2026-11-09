@@ -33,7 +33,10 @@ import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import com.bzead.india.theme.BzeadHeaderNavy
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -140,8 +143,10 @@ fun NotificationsScreen(
                     modifier = Modifier.testTag("mark_all_read_btn")
                 ) { Text("Mark all as read", color = Color.White, fontSize = 11.sp) }
             },
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = BzeadPrimary, titleContentColor = Color.White)
+            colors = TopAppBarDefaults.topAppBarColors(containerColor = BzeadHeaderNavy, titleContentColor = Color.White),
+            modifier = Modifier.statusBarsPadding()
         )
+        HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 0.8.dp)
 
         Column(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {

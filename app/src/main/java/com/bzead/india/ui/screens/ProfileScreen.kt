@@ -52,8 +52,11 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import com.bzead.india.theme.BzeadHeaderNavy
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -161,8 +164,9 @@ fun ProfileScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("My Profile", color = ProfileInk, fontWeight = FontWeight.Bold) },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
+                title = { Text("My Profile", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp) },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = BzeadHeaderNavy),
+                modifier = Modifier.statusBarsPadding()
             )
         },
         containerColor = Color(0xFFF8FAFC)
@@ -249,6 +253,11 @@ fun ProfileScreen(
                         Text("Account Actions", fontWeight = FontWeight.SemiBold, color = ProfileInk)
                         Text("Manage your account settings and preferences.", color = ProfileMuted, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp, bottom = 12.dp))
                         ProfileAction(
+                            icon = Icons.Default.LocationOn,
+                            title = "My Addresses",
+                            onClick = onNavigateToAddresses
+                        )
+                        ProfileAction(
                             icon = Icons.Default.Download,
                             title = "Download My Data",
                             onClick = onNavigateToContact
@@ -272,34 +281,6 @@ fun ProfileScreen(
                     }
                 }
 
-                ProfileCard(title = "My Addresses", icon = Icons.Default.LocationOn, actionLabel = "Add New Address", onAction = onNavigateToAddresses) {
-                    if (addressesLoading) {
-                        Box(modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = ProfileAmber)
-                        }
-                    } else if (addresses.isEmpty()) {
-                        Column(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Icon(Icons.Default.LocationOn, contentDescription = null, tint = Color(0xFFCBD5E1), modifier = Modifier.size(32.dp))
-                            Text("No saved addresses", color = Color(0xFF475569), fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                            Text("Add a delivery address for faster checkout", color = Color(0xFF94A3B8), fontSize = 12.sp)
-                            OutlinedButton(onClick = onNavigateToAddresses, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
-                                Text("Add New Address")
-                            }
-                        }
-                    } else {
-                        addresses.take(3).forEach { address ->
-                            ProfileAddressCard(address, onNavigateToAddresses)
-                        }
-                        OutlinedButton(onClick = onNavigateToAddresses, modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
-                            Icon(Icons.Default.Tune, contentDescription = null)
-                            Spacer(Modifier.width(8.dp))
-                            Text("Manage Addresses")
-                        }
-                    }
-                }
                 TextButton(
                     onClick = { confirmLogout = true },
                     modifier = Modifier.fillMaxWidth().padding(top = 6.dp)

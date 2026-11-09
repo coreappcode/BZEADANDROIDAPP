@@ -16,17 +16,24 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import com.bzead.india.theme.BzeadHeaderNavy
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,33 +55,26 @@ val AuthBlueEnd = Color(0xFF1D4ED8)
 const val BZEAD_AUTH_LOGO_URL = "https://www.bzead.in/images/logo/invoice-logo.png"
 const val BZEAD_AUTH_NAV_LOGO_URL = "https://www.bzead.in/images/logo/logo.png"
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BuyerAuthNav(
     onNavigateBack: () -> Unit,
     onNavigateHome: () -> Unit = onNavigateBack,
+    title: String = "BZEAD Account",
     modifier: Modifier = Modifier
 ) {
-    Surface(
-        modifier = modifier.fillMaxWidth().height(60.dp),
-        color = AuthNavy,
-        shadowElevation = 0.dp
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 34.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            coil.compose.AsyncImage(
-                model = BZEAD_AUTH_NAV_LOGO_URL,
-                contentDescription = "BZEAD",
-                contentScale = androidx.compose.ui.layout.ContentScale.Fit,
-                modifier = Modifier
-                    .width(106.dp)
-                    .height(36.dp)
-                    .clickable { onNavigateHome() }
-            )
-        }
+    Column(modifier = modifier.fillMaxWidth()) {
+        TopAppBar(
+            title = { Text(title, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color.White) },
+            navigationIcon = {
+                IconButton(onClick = onNavigateBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                }
+            },
+            colors = TopAppBarDefaults.topAppBarColors(containerColor = BzeadHeaderNavy, titleContentColor = Color.White),
+            modifier = Modifier.statusBarsPadding()
+        )
+        HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 0.8.dp)
     }
 }
 

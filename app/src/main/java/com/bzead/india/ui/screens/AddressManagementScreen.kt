@@ -3,12 +3,14 @@ package com.bzead.india.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -56,8 +58,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material3.HorizontalDivider
 import com.bzead.india.data.BzeadRepository
 import com.bzead.india.model.DeliveryAddress
+import com.bzead.india.theme.BzeadHeaderNavy
 import com.bzead.india.util.AddressValidation
 import kotlinx.coroutines.launch
 
@@ -137,25 +142,35 @@ fun AddressManagementScreen(onNavigateBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("My Addresses", color = AddressInk, fontWeight = FontWeight.Bold) },
+                title = { Text("My Addresses", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = AddressInk)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
+                actions = {
+                    if (!showForm && !isLoading) {
+                        TextButton(onClick = { resetForm() }) {
+                            Icon(Icons.Default.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Add New", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                        }
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = BzeadHeaderNavy),
+                modifier = Modifier.statusBarsPadding()
             )
         },
-        containerColor = Color.White
+        containerColor = Color(0xFFF8FAFC)
     ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(Color.White)
+                .background(Color(0xFFF8FAFC))
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             if (isLoading) {
                 Row(modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp), horizontalArrangement = Arrangement.Center) {
@@ -167,11 +182,6 @@ fun AddressManagementScreen(onNavigateBack: () -> Unit) {
             }
             if (errorMessage.isNotEmpty()) {
                 AddressMessage(errorMessage, true) { errorMessage = "" }
-            }
-
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("My Addresses", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = AddressInk)
-                Text("Manage your delivery addresses", color = AddressMuted)
             }
 
             if (showForm) {
@@ -419,80 +429,158 @@ private fun AddressCard(
     onDelete: () -> Unit,
     onSetDefault: () -> Unit
 ) {
-    Card(
+    Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFF9FAFB)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        shape = RoundedCornerShape(12.dp),
+        color = Color.White,
+        border = androidx.compose.foundation.BorderStroke(0.8.dp, Color(0xFFE2E8F0)),
+        shadowElevation = 0.5.dp
     ) {
-        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(
-                    when (address.addressType.lowercase()) {
-                        "home" -> Icons.Default.Home
-                        "work" -> Icons.Default.Business
-                        else -> Icons.Default.Place
-                    },
-                    contentDescription = null,
-                    tint = AddressAmber
-                )
-                Text(address.addressType.ifBlank { "home" }.replaceFirstChar { it.uppercase() }, color = AddressAmber, fontWeight = FontWeight.SemiBold)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // Header: Address Type Icon & Name + Default Badge on Right
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        when (address.addressType.lowercase()) {
+                            "home" -> Icons.Default.Home
+                            "work" -> Icons.Default.Business
+                            else -> Icons.Default.Place
+                        },
+                        contentDescription = null,
+                        tint = AddressAmber,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        address.addressType.ifBlank { "home" }.replaceFirstChar { it.uppercase() },
+                        color = Color(0xFF0F172A),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+                }
+
                 if (address.isDefault) {
-                    Surface(color = AddressAmber, shape = RoundedCornerShape(50)) {
-                        Text("Default", color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
+                    Surface(
+                        color = Color(0xFFD1FAE5),
+                        shape = RoundedCornerShape(4.dp),
+                        border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFFA7F3D0))
+                    ) {
+                        Text(
+                            "DEFAULT ADDRESS",
+                            color = Color(0xFF047857),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                        )
                     }
                 }
             }
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("Name", fontSize = 12.sp, color = AddressMuted)
-                Text(address.fullName, color = AddressInk, fontWeight = FontWeight.Medium)
+
+            HorizontalDivider(color = Color(0xFFF1F5F9), thickness = 0.8.dp)
+
+            // Address Details
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(
+                    text = address.fullName,
+                    fontSize = 14.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF0F172A)
+                )
+
+                val fullStreet = listOf(address.streetAddress, address.streetAddress2)
+                    .filter { it.isNotBlank() }
+                    .joinToString(", ")
+                val fullLocality = listOf(address.city, address.state, address.pinCode, address.country)
+                    .filter { it.isNotBlank() }
+                    .joinToString(", ")
+
+                Text(
+                    text = "$fullStreet\n$fullLocality",
+                    fontSize = 12.5.sp,
+                    color = Color(0xFF334155),
+                    lineHeight = 17.sp
+                )
+
+                val contactInfo = listOf(address.phoneNumber, address.email)
+                    .filter { it.isNotBlank() }
+                    .joinToString("  ·  ")
+                if (contactInfo.isNotBlank()) {
+                    Text(
+                        text = contactInfo,
+                        fontSize = 12.sp,
+                        color = Color(0xFF64748B),
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+
+                if (address.deliveryNotes.isNotBlank()) {
+                    Text(
+                        text = "Note: ${address.deliveryNotes}",
+                        fontSize = 11.5.sp,
+                        color = Color(0xFF94A3B8),
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(20.dp), modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Phone", fontSize = 12.sp, color = AddressMuted)
-                    Text(address.phoneNumber, fontSize = 14.sp, color = AddressInk)
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Email", fontSize = 12.sp, color = AddressMuted)
-                    Text(address.email, fontSize = 14.sp, color = AddressInk)
-                }
-            }
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("Address", fontSize = 12.sp, color = AddressMuted)
-                Text(address.streetAddress, fontSize = 14.sp, color = AddressInk)
-                if (address.streetAddress2.isNotBlank()) Text(address.streetAddress2, fontSize = 14.sp, color = AddressInk)
-                Text("${address.city}, ${address.state} ${address.pinCode}", fontSize = 14.sp, color = AddressInk)
-                Text(address.country, fontSize = 14.sp, color = AddressMuted)
-            }
-            if (address.deliveryNotes.isNotBlank()) {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("Delivery Notes", fontSize = 12.sp, color = AddressMuted)
-                    Text(address.deliveryNotes, fontSize = 14.sp, color = AddressMuted)
-                }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedButton(onClick = onEdit, enabled = !isSaving, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Default.Edit, contentDescription = null)
-                    Spacer(Modifier.width(6.dp))
-                    Text("Edit")
-                }
-                Button(
-                    onClick = onDelete,
-                    enabled = !isSaving,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
-                ) {
-                    Icon(Icons.Default.Delete, contentDescription = null)
-                    Spacer(Modifier.width(6.dp))
-                    Text("Delete", color = Color.White)
-                }
-                if (!address.isDefault) {
-                    Button(
-                        onClick = onSetDefault,
+
+            HorizontalDivider(color = Color(0xFFF1F5F9), thickness = 0.8.dp)
+
+            // Bottom Right Action Buttons (Aligned, Compact Height)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (!address.isDefault) {
+                        Button(
+                            onClick = onSetDefault,
+                            enabled = !isSaving,
+                            colors = ButtonDefaults.buttonColors(containerColor = AddressAmber, contentColor = Color.Black),
+                            shape = RoundedCornerShape(6.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                            modifier = Modifier.height(32.dp)
+                        ) {
+                            Text("Set Default", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+
+                    OutlinedButton(
+                        onClick = onEdit,
                         enabled = !isSaving,
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(containerColor = AddressAmber, contentColor = Color.Black)
-                    ) { Text("Set Default") }
+                        shape = RoundedCornerShape(6.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                        modifier = Modifier.height(32.dp)
+                    ) {
+                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Edit", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1E293B))
+                    }
+
+                    Button(
+                        onClick = onDelete,
+                        enabled = !isSaving,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFEF2F2), contentColor = Color(0xFFDC2626)),
+                        border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFFFCA5A5)),
+                        shape = RoundedCornerShape(6.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                        modifier = Modifier.height(32.dp)
+                    ) {
+                        Icon(Icons.Default.Delete, contentDescription = null, tint = Color(0xFFDC2626), modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Delete", color = Color(0xFFDC2626), fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
         }

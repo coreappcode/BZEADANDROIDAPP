@@ -17,10 +17,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.ShoppingCart
-import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -28,7 +30,9 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -49,6 +53,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bzead.india.theme.BzeadHeaderNavy
 import coil.compose.AsyncImage
 import com.bzead.india.data.BzeadRepository
 import com.bzead.india.data.Product
@@ -92,11 +97,18 @@ fun WishlistScreen(
     ) {
         TopAppBar(
             title = { Text("My Wishlist", fontWeight = FontWeight.Bold, fontSize = 18.sp) },
+            navigationIcon = {
+                IconButton(onClick = onNavigateToHome) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Color.White)
+                }
+            },
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = BzeadPrimary,
+                containerColor = BzeadHeaderNavy,
                 titleContentColor = Color.White
-            )
+            ),
+            modifier = Modifier.statusBarsPadding()
         )
+        HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 0.8.dp)
 
         Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
             Spacer(Modifier.height(12.dp))

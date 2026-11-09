@@ -39,7 +39,10 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import com.bzead.india.theme.BzeadHeaderNavy
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -182,9 +185,12 @@ fun OrderDetailScreen(
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = BzeadPrimary,
+                containerColor = BzeadHeaderNavy,
                 titleContentColor = Color.White
-            )
+            ),
+            modifier = Modifier.statusBarsPadding()
+        )
+        HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 0.8.dp)
         )
 
         Row(

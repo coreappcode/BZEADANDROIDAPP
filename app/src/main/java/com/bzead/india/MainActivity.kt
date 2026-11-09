@@ -2,6 +2,7 @@ package com.bzead.india
 
 import android.app.Activity
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -30,6 +31,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import com.bzead.india.data.BzeadRepository
 import com.bzead.india.theme.BzeadHeaderNavy
@@ -179,6 +181,7 @@ class MainActivity : ComponentActivity(), com.razorpay.PaymentResultWithDataList
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        try { com.razorpay.Checkout.preload(applicationContext) } catch (e: Exception) { e.printStackTrace() }
         com.bzead.india.data.BzeadRepository.init(applicationContext)
         com.bzead.india.data.BzeadFirebaseMessagingService.ensureChannel(applicationContext)
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
@@ -284,8 +287,48 @@ class MainActivity : ComponentActivity(), com.razorpay.PaymentResultWithDataList
                     }
                 }
 
-                BackHandler(enabled = currentScreen != AppScreen.Home && currentScreen != AppScreen.Splash) {
-                    currentScreen = AppScreen.Home
+                val context = LocalContext.current
+                var backPressedTime by remember { mutableStateOf(0L) }
+                val screenHistory = remember { mutableListOf<AppScreen>(AppScreen.Home) }
+
+                fun navigateTo(screen: AppScreen) {
+                    if (screen == currentScreen) return
+                    if (screen == AppScreen.Home) {
+                        screenHistory.clear()
+                        screenHistory.add(AppScreen.Home)
+                    } else {
+                        if (screenHistory.lastOrNull() != screen) {
+                            screenHistory.add(screen)
+                        }
+                    }
+                    currentScreen = screen
+                }
+
+                fun navigateBack() {
+                    if (screenHistory.size > 1) {
+                        screenHistory.removeAt(screenHistory.lastIndex)
+                        currentScreen = screenHistory.last()
+                    } else if (currentScreen != AppScreen.Home) {
+                        currentScreen = AppScreen.Home
+                        screenHistory.clear()
+                        screenHistory.add(AppScreen.Home)
+                    }
+                }
+
+                BackHandler(enabled = true) {
+                    if (currentScreen == AppScreen.Home) {
+                        val now = System.currentTimeMillis()
+                        if (now - backPressedTime < 2000L) {
+                            (context as? Activity)?.finish()
+                        } else {
+                            backPressedTime = now
+                            Toast.makeText(context, "Press back button again to Exit", Toast.LENGTH_SHORT).show()
+                        }
+                    } else if (currentScreen == AppScreen.Splash) {
+                        (context as? Activity)?.finish()
+                    } else {
+                        navigateBack()
+                    }
                 }
 
                 val networkStatus = rememberNetworkStatus()
@@ -300,13 +343,14 @@ class MainActivity : ComponentActivity(), com.razorpay.PaymentResultWithDataList
                             BzeadBottomNav(
                                 currentTab = currentBottomTab,
                                 onTabSelected = { tab ->
-                                    currentScreen = when (tab) {
+                                    val target = when (tab) {
                                         BottomTab.HOME -> AppScreen.Home
                                         BottomTab.ORDERS -> AppScreen.Orders
                                         BottomTab.CATEGORY -> AppScreen.Category
                                         BottomTab.CART -> if (isLoggedIn) AppScreen.Cart else AppScreen.Login
                                         BottomTab.ACCOUNT -> if (isLoggedIn) AppScreen.Profile else AppScreen.Login
                                     }
+                                    navigateTo(target)
                                 },
                                 isLoggedIn = isLoggedIn,
                                 cartCount = cartCount
@@ -329,162 +373,162 @@ class MainActivity : ComponentActivity(), com.razorpay.PaymentResultWithDataList
                                 is AppScreen.Splash -> {
                                     SplashScreen(
                                         onSplashFinished = {
-                                            currentScreen = AppScreen.Home
+                                            navigateTo(AppScreen.Home)
                                         }
                                     )
                                 }
                                 is AppScreen.Home -> {
                                     HomeScreen(
-                                        onNavigateToSearch = { currentScreen = AppScreen.Search },
-                                        onNavigateToProduct = { id -> currentScreen = AppScreen.ProductDetail(id) },
-                                        onNavigateToCategory = { id -> currentScreen = AppScreen.CategoryDetail(id) },
-                                        onNavigateToSection = { id -> currentScreen = AppScreen.SectionProducts(id) },
+                                        onNavigateToSearch = { navigateTo(AppScreen.Search) },
+                                        onNavigateToProduct = { id -> navigateTo(AppScreen.ProductDetail(id)) },
+                                        onNavigateToCategory = { id -> navigateTo(AppScreen.CategoryDetail(id)) },
+                                        onNavigateToSection = { id -> navigateTo(AppScreen.SectionProducts(id)) },
                                         onOpenLink = openLink,
-                                        onNavigateToNotifications = { currentScreen = AppScreen.Notifications },
-                                        onNavigateToCart = { currentScreen = AppScreen.Cart },
-                                        onNavigateToWishlist = { currentScreen = AppScreen.Wishlist },
-                                        onNavigateToAccount = { currentScreen = AppScreen.Profile },
-                                        onNavigateToOrders = { currentScreen = AppScreen.Orders },
-                                        onNavigateToContact = { currentScreen = AppScreen.Contact },
-                                        onNavigateToLogin = { currentScreen = AppScreen.Login },
-                                        onNavigateToSignup = { currentScreen = AppScreen.Signup },
+                                        onNavigateToNotifications = { navigateTo(AppScreen.Notifications) },
+                                        onNavigateToCart = { navigateTo(AppScreen.Cart) },
+                                        onNavigateToWishlist = { navigateTo(AppScreen.Wishlist) },
+                                        onNavigateToAccount = { navigateTo(AppScreen.Profile) },
+                                        onNavigateToOrders = { navigateTo(AppScreen.Orders) },
+                                        onNavigateToContact = { navigateTo(AppScreen.Contact) },
+                                        onNavigateToLogin = { navigateTo(AppScreen.Login) },
+                                        onNavigateToSignup = { navigateTo(AppScreen.Signup) },
                                         snackbarHostState = snackbarHostState
                                     )
                                 }
                                 is AppScreen.CategoryDetail -> {
                                     CategoryScreen(
                                         initialCategoryId = screen.categoryId,
-                                        onNavigateBack = { currentScreen = AppScreen.Home },
-                                        onNavigateToProduct = { id -> currentScreen = AppScreen.ProductDetail(id) },
-                                        onNavigateToSearch = { currentScreen = AppScreen.Search },
-                                        onNavigateToCart = { currentScreen = AppScreen.Cart },
-                                        onNavigateToWishlist = { currentScreen = AppScreen.Wishlist },
+                                        onNavigateBack = { navigateBack() },
+                                        onNavigateToProduct = { id -> navigateTo(AppScreen.ProductDetail(id)) },
+                                        onNavigateToSearch = { navigateTo(AppScreen.Search) },
+                                        onNavigateToCart = { navigateTo(AppScreen.Cart) },
+                                        onNavigateToWishlist = { navigateTo(AppScreen.Wishlist) },
                                         snackbarHostState = snackbarHostState,
                                         isCategoryPage = true
                                     )
                                 }
                                 is AppScreen.Category -> {
                                     CategoryScreen(
-                                        onNavigateBack = { currentScreen = AppScreen.Home },
-                                        onNavigateToProduct = { id -> currentScreen = AppScreen.ProductDetail(id) },
-                                        onNavigateToSearch = { currentScreen = AppScreen.Search },
-                                        onNavigateToCart = { currentScreen = AppScreen.Cart },
-                                        onNavigateToWishlist = { currentScreen = AppScreen.Wishlist },
+                                        onNavigateBack = { navigateBack() },
+                                        onNavigateToProduct = { id -> navigateTo(AppScreen.ProductDetail(id)) },
+                                        onNavigateToSearch = { navigateTo(AppScreen.Search) },
+                                        onNavigateToCart = { navigateTo(AppScreen.Cart) },
+                                        onNavigateToWishlist = { navigateTo(AppScreen.Wishlist) },
                                         snackbarHostState = snackbarHostState
                                     )
                                 }
 
                                 is AppScreen.Cart -> {
                                     CartScreen(
-                                        onNavigateToHome = { currentScreen = AppScreen.Home },
-                                        onNavigateToProduct = { id -> currentScreen = AppScreen.ProductDetail(id) },
-                                        onProceedToCheckout = { currentScreen = AppScreen.ShippingAddress }
+                                        onNavigateToHome = { navigateTo(AppScreen.Home) },
+                                        onNavigateToProduct = { id -> navigateTo(AppScreen.ProductDetail(id)) },
+                                        onProceedToCheckout = { navigateTo(AppScreen.ShippingAddress) }
                                     )
                                 }
                                 is AppScreen.ShippingAddress -> {
                                     ShippingAddressScreen(
-                                        onNavigateBack = { currentScreen = AppScreen.Cart },
-                                        onProceedToSummary = { currentScreen = AppScreen.OrderSummary }
+                                        onNavigateBack = { navigateBack() },
+                                        onProceedToSummary = { navigateTo(AppScreen.OrderSummary) }
                                     )
                                 }
                                 is AppScreen.OrderSummary -> {
                                     OrderSummaryScreen(
-                                        onNavigateBack = { currentScreen = AppScreen.ShippingAddress },
-                                        onProceedToPayment = { currentScreen = AppScreen.Checkout },
-                                        onNavigateToCart = { currentScreen = AppScreen.Cart }
+                                        onNavigateBack = { navigateBack() },
+                                        onProceedToPayment = { navigateTo(AppScreen.Checkout) },
+                                        onNavigateToCart = { navigateTo(AppScreen.Cart) }
                                     )
                                 }
                                 is AppScreen.Profile -> {
                                     ProfileScreen(
-                                        onNavigateToOrders = { currentScreen = AppScreen.Orders },
-                                        onNavigateToWishlist = { currentScreen = AppScreen.Wishlist },
-                                        onNavigateToNotifications = { currentScreen = AppScreen.Notifications },
-                                        onNavigateToPolicy = { type -> currentScreen = AppScreen.Policy(type) },
-                                        onNavigateToAddresses = { currentScreen = AppScreen.AddressManagement },
-                                        onNavigateToSettings = { currentScreen = AppScreen.Settings },
-                                        onNavigateToContact = { currentScreen = AppScreen.Contact },
-                                        onNavigateToLogin = { currentScreen = AppScreen.Login },
-                                        onNavigateToSignup = { currentScreen = AppScreen.Signup },
+                                        onNavigateToOrders = { navigateTo(AppScreen.Orders) },
+                                        onNavigateToWishlist = { navigateTo(AppScreen.Wishlist) },
+                                        onNavigateToNotifications = { navigateTo(AppScreen.Notifications) },
+                                        onNavigateToPolicy = { type -> navigateTo(AppScreen.Policy(type)) },
+                                        onNavigateToAddresses = { navigateTo(AppScreen.AddressManagement) },
+                                        onNavigateToSettings = { navigateTo(AppScreen.Settings) },
+                                        onNavigateToContact = { navigateTo(AppScreen.Contact) },
+                                        onNavigateToLogin = { navigateTo(AppScreen.Login) },
+                                        onNavigateToSignup = { navigateTo(AppScreen.Signup) },
                                         onNavigateToHome = {
                                             pendingLoginDestination = null
-                                            currentScreen = AppScreen.Home
+                                            navigateTo(AppScreen.Home)
                                         },
                                         snackbarHostState = snackbarHostState
                                     )
                                 }
                                 is AppScreen.Search -> {
                                     SearchScreen(
-                                        onNavigateBack = { currentScreen = AppScreen.Home },
-                                        onNavigateToProduct = { id -> currentScreen = AppScreen.ProductDetail(id) },
+                                        onNavigateBack = { navigateBack() },
+                                        onNavigateToProduct = { id -> navigateTo(AppScreen.ProductDetail(id)) },
                                         snackbarHostState = snackbarHostState
                                     )
                                 }
                                 is AppScreen.ProductDetail -> {
                                     ProductDetailScreen(
                                         productId = screen.productId,
-                                        onNavigateBack = { currentScreen = AppScreen.Home },
-                                        onNavigateToCart = { currentScreen = AppScreen.Cart },
-                                        onNavigateToWriteReview = { id -> currentScreen = AppScreen.WriteReview(id) },
-                                        onNavigateToLogin = { currentScreen = AppScreen.Login },
-                                        onNavigateToAddresses = { currentScreen = AppScreen.AddressManagement },
-                                        onNavigateHome = { currentScreen = AppScreen.Home },
-                                        onNavigateToCategory = { id -> currentScreen = AppScreen.CategoryDetail(id) },
-                                        onNavigateToProduct = { id -> currentScreen = AppScreen.ProductDetail(id) },
+                                        onNavigateBack = { navigateBack() },
+                                        onNavigateToCart = { navigateTo(AppScreen.Cart) },
+                                        onNavigateToWriteReview = { id -> navigateTo(AppScreen.WriteReview(id)) },
+                                        onNavigateToLogin = { navigateTo(AppScreen.Login) },
+                                        onNavigateToAddresses = { navigateTo(AppScreen.AddressManagement) },
+                                        onNavigateHome = { navigateTo(AppScreen.Home) },
+                                        onNavigateToCategory = { id -> navigateTo(AppScreen.CategoryDetail(id)) },
+                                        onNavigateToProduct = { id -> navigateTo(AppScreen.ProductDetail(id)) },
                                         snackbarHostState = snackbarHostState
                                     )
                                 }
                                 is AppScreen.AddressManagement -> {
                                     AddressManagementScreen(
-                                        onNavigateBack = { currentScreen = AppScreen.Profile }
+                                        onNavigateBack = { navigateBack() }
                                     )
                                 }
                                 is AppScreen.WriteReview -> {
                                     WriteReviewScreen(
                                         productId = screen.productId,
-                                        onNavigateBack = { currentScreen = AppScreen.ProductDetail(screen.productId) },
-                                        onReviewSubmitted = { currentScreen = AppScreen.ProductDetail(screen.productId) },
-                                        onGoHome = { currentScreen = AppScreen.Home }
+                                        onNavigateBack = { navigateBack() },
+                                        onReviewSubmitted = { navigateBack() },
+                                        onGoHome = { navigateTo(AppScreen.Home) }
                                     )
                                 }
                                 is AppScreen.Settings -> {
                                     SettingsScreen(
-                                        onNavigateBack = { currentScreen = AppScreen.Profile }
+                                        onNavigateBack = { navigateBack() }
                                     )
                                 }
                                 is AppScreen.SectionProducts -> {
                                     SectionProductsScreen(
                                         sectionId = screen.sectionId,
-                                        onNavigateBack = { currentScreen = AppScreen.Home },
-                                        onProductClick = { id -> currentScreen = AppScreen.ProductDetail(id) },
-                                        onNavigateToLogin = { currentScreen = AppScreen.Login },
-                                        onNavigateToSearch = { currentScreen = AppScreen.Search }
+                                        onNavigateBack = { navigateBack() },
+                                        onProductClick = { id -> navigateTo(AppScreen.ProductDetail(id)) },
+                                        onNavigateToLogin = { navigateTo(AppScreen.Login) },
+                                        onNavigateToSearch = { navigateTo(AppScreen.Search) }
                                     )
                                 }
                                 is AppScreen.Contact -> {
                                     ContactScreen(
-                                        onNavigateBack = { currentScreen = AppScreen.Profile }
+                                        onNavigateBack = { navigateBack() }
                                     )
                                 }
                                 is AppScreen.Wishlist -> {
                                     WishlistScreen(
-                                        onNavigateToHome = { currentScreen = AppScreen.Home },
-                                        onNavigateToProduct = { id -> currentScreen = AppScreen.ProductDetail(id) },
+                                        onNavigateToHome = { navigateTo(AppScreen.Home) },
+                                        onNavigateToProduct = { id -> navigateTo(AppScreen.ProductDetail(id)) },
                                         snackbarHostState = snackbarHostState,
-                                        onNavigateToLogin = { currentScreen = AppScreen.Login }
+                                        onNavigateToLogin = { navigateTo(AppScreen.Login) }
                                     )
                                 }
                                 is AppScreen.Checkout -> {
                                     CheckoutScreen(
-                                        onNavigateBack = { currentScreen = AppScreen.OrderSummary },
-                                        onOrderPlaced = { orderId -> currentScreen = AppScreen.OrderSuccess(orderId) }
+                                        onNavigateBack = { navigateBack() },
+                                        onOrderPlaced = { orderId -> navigateTo(AppScreen.OrderSuccess(orderId)) }
                                     )
                                 }
                                 is AppScreen.OrderSuccess -> {
                                     OrderSuccessScreen(
                                         orderId = screen.orderId,
-                                        onViewOrder = { orderId -> currentScreen = AppScreen.OrderDetail(orderId) },
-                                        onContinueShopping = { currentScreen = AppScreen.Home },
-                                        onViewOrders = { currentScreen = AppScreen.Orders },
+                                        onViewOrder = { orderId -> navigateTo(AppScreen.OrderDetail(orderId)) },
+                                        onContinueShopping = { navigateTo(AppScreen.Home) },
+                                        onViewOrders = { navigateTo(AppScreen.Orders) },
                                         onContactSupport = { currentScreen = AppScreen.Contact }
                                     )
                                 }

@@ -159,7 +159,7 @@ fun SignupScreen(
             .fillMaxSize()
             .background(Color.White)
     ) {
-        BuyerAuthNav(onNavigateBack = onNavigateBack)
+        BuyerAuthNav(onNavigateBack = onNavigateBack, title = "Create Account")
 
         Column(
             modifier = Modifier

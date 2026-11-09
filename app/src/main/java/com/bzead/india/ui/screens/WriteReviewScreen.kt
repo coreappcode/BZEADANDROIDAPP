@@ -38,6 +38,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.bzead.india.data.BzeadRepository
 import com.bzead.india.data.Product
+import com.bzead.india.theme.BzeadHeaderNavy
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -134,10 +136,27 @@ fun WriteReviewScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFFF3F4F6))
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        TopAppBar(
+            title = { Text("Write Review", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color.White) },
+            navigationIcon = {
+                IconButton(onClick = onNavigateBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                }
+            },
+            colors = TopAppBarDefaults.topAppBarColors(containerColor = BzeadHeaderNavy, titleContentColor = Color.White),
+            modifier = Modifier.statusBarsPadding()
+        )
+        HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 0.8.dp)
+
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color.White).border(1.dp, Color(0xFFF3F4F6), RoundedCornerShape(12.dp)).padding(16.dp)) {
             Text("Write a Review", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Gray900)
             Text("Share your experience with this product", fontSize = 14.sp, color = Color(0xFF6B7280), modifier = Modifier.padding(top = 4.dp))
@@ -344,4 +363,5 @@ fun WriteReviewScreen(
             }
         }
     }
+}
 }

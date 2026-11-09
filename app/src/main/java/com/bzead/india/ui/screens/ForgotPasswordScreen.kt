@@ -90,7 +90,7 @@ fun ForgotPasswordScreen(
             .fillMaxSize()
             .background(Color.White)
     ) {
-        BuyerAuthNav(onNavigateBack = onNavigateBack)
+        BuyerAuthNav(onNavigateBack = onNavigateBack, title = "Forgot Password")
 
         Column(
             modifier = Modifier

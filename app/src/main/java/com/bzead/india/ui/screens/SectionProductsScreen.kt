@@ -24,7 +24,10 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import com.bzead.india.theme.BzeadHeaderNavy
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
@@ -145,11 +148,13 @@ fun SectionProductsScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFF0F172A),
+                    containerColor = BzeadHeaderNavy,
                     titleContentColor = Color.White,
                     navigationIconContentColor = Color.White
-                )
+                ),
+                modifier = Modifier.statusBarsPadding()
             )
+            HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 0.8.dp)
         },
         containerColor = Color.White
     ) { padding ->

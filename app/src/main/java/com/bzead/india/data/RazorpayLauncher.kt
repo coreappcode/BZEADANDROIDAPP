@@ -38,6 +38,7 @@ object RazorpayLauncher {
         expectedOrderId = order.orderId
         withContext(Dispatchers.Main) {
             try {
+                try { Checkout.preload(activity.applicationContext) } catch (_: Exception) {}
                 val checkout = Checkout()
                 checkout.setKeyID(order.keyId)
                 val options = JSONObject()

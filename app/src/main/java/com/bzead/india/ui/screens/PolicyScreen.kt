@@ -13,7 +13,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import com.bzead.india.theme.BzeadHeaderNavy
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -51,11 +54,13 @@ fun PolicyScreen(
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = Color.White,
-                titleContentColor = Color(0xFF111827),
-                navigationIconContentColor = Color(0xFF475569)
-            )
+                containerColor = BzeadHeaderNavy,
+                titleContentColor = Color.White,
+                navigationIconContentColor = Color.White
+            ),
+            modifier = Modifier.statusBarsPadding()
         )
+        HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 0.8.dp)
 
         Row(
             modifier = Modifier.fillMaxWidth().background(Color(0xFFF9FAFB)).padding(horizontal = 16.dp, vertical = 10.dp),

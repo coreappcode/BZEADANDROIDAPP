@@ -118,7 +118,7 @@ fun LoginScreen(
             .fillMaxSize()
             .background(Color.White)
     ) {
-        BuyerAuthNav(onNavigateBack = onNavigateBack)
+        BuyerAuthNav(onNavigateBack = onNavigateBack, title = "Log In")
 
         Column(
             modifier = Modifier

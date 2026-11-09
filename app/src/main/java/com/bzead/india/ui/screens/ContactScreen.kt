@@ -24,7 +24,10 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.Button
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.HorizontalDivider
+import com.bzead.india.theme.BzeadHeaderNavy
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -71,11 +74,13 @@ fun ContactScreen(onNavigateBack: () -> Unit) {
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.White,
-                    titleContentColor = Color(0xFF111827),
-                    navigationIconContentColor = Color(0xFF475569)
-                )
+                    containerColor = BzeadHeaderNavy,
+                    titleContentColor = Color.White,
+                    navigationIconContentColor = Color.White
+                ),
+                modifier = Modifier.statusBarsPadding()
             )
+            HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 0.8.dp)
         },
         containerColor = Color.White
     ) { padding ->

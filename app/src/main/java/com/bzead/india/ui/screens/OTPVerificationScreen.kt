@@ -164,7 +164,7 @@ fun OTPVerificationScreen(
             .fillMaxSize()
             .background(Brush.linearGradient(listOf(Color(0xFFDBEAFE), Color(0xFFEFF6FF), Color.White)))
     ) {
-        BuyerAuthNav(onNavigateBack = onNavigateBack, onNavigateHome = onNavigateHome)
+        BuyerAuthNav(onNavigateBack = onNavigateBack, onNavigateHome = onNavigateHome, title = "OTP Verification")
 
         Column(
             modifier = Modifier
