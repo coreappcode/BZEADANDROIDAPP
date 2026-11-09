@@ -191,7 +191,6 @@ fun OrderDetailScreen(
             modifier = Modifier.statusBarsPadding()
         )
         HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 0.8.dp)
-        )
 
         Row(
             modifier = Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 10.dp, vertical = 6.dp),
