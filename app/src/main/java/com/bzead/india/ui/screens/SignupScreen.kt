@@ -247,6 +247,9 @@ fun SignupScreen(
                                 .testTag("country_select"),
                             shape = RoundedCornerShape(8.dp),
                             colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = Color.Black,
+                                unfocusedTextColor = Color.Black,
+                                disabledTextColor = Color.Black,
                                 focusedBorderColor = Color(0xFF2563EB),
                                 unfocusedBorderColor = Color(0xFFCBD5E1),
                                 focusedContainerColor = Color.White,
@@ -314,6 +317,9 @@ fun SignupScreen(
                             .testTag("signup_fullname_input"),
                         shape = RoundedCornerShape(8.dp),
                         colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.Black,
+                            unfocusedTextColor = Color.Black,
+                            disabledTextColor = Color.Black,
                             focusedBorderColor = Color(0xFF2563EB),
                             unfocusedBorderColor = Color(0xFFCBD5E1),
                             focusedContainerColor = Color.White,
@@ -359,6 +365,9 @@ fun SignupScreen(
                             .testTag("signup_email_input"),
                         shape = RoundedCornerShape(8.dp),
                         colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.Black,
+                            unfocusedTextColor = Color.Black,
+                            disabledTextColor = Color.Black,
                             focusedBorderColor = Color(0xFF2563EB),
                             unfocusedBorderColor = Color(0xFFCBD5E1),
                             focusedContainerColor = Color.White,
@@ -417,6 +426,9 @@ fun SignupScreen(
                             .testTag("signup_password_input"),
                         shape = RoundedCornerShape(8.dp),
                         colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.Black,
+                            unfocusedTextColor = Color.Black,
+                            disabledTextColor = Color.Black,
                             focusedBorderColor = if (passwordErrors.isNotEmpty()) Color(0xFFEF4444) else Color(0xFF2563EB),
                             unfocusedBorderColor = if (passwordErrors.isNotEmpty()) Color(0xFFFCA5A5) else Color(0xFFCBD5E1),
                             focusedContainerColor = Color.White,

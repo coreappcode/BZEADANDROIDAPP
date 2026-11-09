@@ -208,6 +208,9 @@ fun NewPasswordScreen(
                         modifier = Modifier.fillMaxWidth().testTag("new_password_input"),
                         shape = RoundedCornerShape(8.dp),
                         colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.Black,
+                            unfocusedTextColor = Color.Black,
+                            disabledTextColor = Color.Black,
                             focusedBorderColor = Color(0xFF2563EB),
                             unfocusedBorderColor = Color(0xFFCBD5E1)
                         )
@@ -256,6 +259,9 @@ fun NewPasswordScreen(
                         modifier = Modifier.fillMaxWidth().testTag("confirm_password_input"),
                         shape = RoundedCornerShape(8.dp),
                         colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.Black,
+                            unfocusedTextColor = Color.Black,
+                            disabledTextColor = Color.Black,
                             focusedBorderColor = Color(0xFF2563EB),
                             unfocusedBorderColor = Color(0xFFCBD5E1)
                         )

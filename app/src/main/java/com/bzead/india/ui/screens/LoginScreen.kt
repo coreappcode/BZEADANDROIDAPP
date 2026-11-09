@@ -219,6 +219,9 @@ fun LoginScreen(
                             .testTag("login_email_input"),
                         shape = RoundedCornerShape(8.dp),
                         colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.Black,
+                            unfocusedTextColor = Color.Black,
+                            disabledTextColor = Color.Black,
                             focusedBorderColor = Color(0xFF2563EB),
                             unfocusedBorderColor = Color(0xFFCBD5E1),
                             focusedContainerColor = Color.White,
@@ -277,6 +280,9 @@ fun LoginScreen(
                             .testTag("login_password_input"),
                         shape = RoundedCornerShape(8.dp),
                         colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.Black,
+                            unfocusedTextColor = Color.Black,
+                            disabledTextColor = Color.Black,
                             focusedBorderColor = Color(0xFF2563EB),
                             unfocusedBorderColor = Color(0xFFCBD5E1),
                             focusedContainerColor = Color.White,

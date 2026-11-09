@@ -295,7 +295,7 @@ fun OTPVerificationScreen(
                             fontFamily = FontFamily.Monospace,
                             textAlign = TextAlign.Center,
                             letterSpacing = 8.sp,
-                            color = Color(0xFF0F172A)
+                            color = Color.Black
                         ),
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(
@@ -313,6 +313,9 @@ fun OTPVerificationScreen(
                             .testTag("otp_input"),
                         shape = RoundedCornerShape(8.dp),
                         colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.Black,
+                            unfocusedTextColor = Color.Black,
+                            disabledTextColor = Color.Black,
                             focusedBorderColor = Color(0xFF2563EB),
                             unfocusedBorderColor = Color(0xFFCBD5E1),
                             focusedContainerColor = Color(0xFFF8FAFC),
